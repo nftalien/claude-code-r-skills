@@ -18,3 +18,17 @@ Thumbs.db
 
 # Local-only skills (not ready for public release)
 .claude/skills/r-machine-learning/
+
+# polycopy (Polymarket copy-trading bot)
+polycopy/.venv/
+polycopy/config.yaml
+polycopy/.env
+polycopy/*.db
+polycopy/*.db-wal
+polycopy/*.db-shm
+polycopy/*.log
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.ruff_cache/

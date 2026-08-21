@@ -1,0 +1,42 @@
+# polycopy configuration.
+# Secrets never live here - see .env.example.
+
+leaders:
+  - address: "0x0000000000000000000000000000000000000000"  # replace me
+    label: whale-1
+    weight: 1.0
+    # max_order_usdc: 25        # optional per-leader ceiling
+
+sizing:
+  mode: fixed                   # fixed | proportional | bankroll_fraction
+  fixed_usdc: 10.0
+  proportional_factor: 0.01     # used when mode = proportional
+  bankroll_fraction: 0.01       # used when mode = bankroll_fraction
+  bankroll_usdc: 1000.0
+  min_order_usdc: 2.0
+  max_order_usdc: 25.0
+  exit_policy: proportional     # proportional | full | off
+
+risk:
+  min_price: 0.05
+  max_price: 0.95
+  min_leader_notional_usdc: 100.0
+  max_market_exposure_usdc: 50.0
+  max_total_exposure_usdc: 500.0
+  daily_spend_cap_usdc: 150.0
+  max_trade_age_seconds: 300
+  min_seconds_to_close: 3600
+  max_slippage_bps: 200
+  max_open_markets: 20
+  block_keywords: []
+
+execution:
+  order_type: FAK               # FAK | FOK | GTC
+  slippage_bps: 100
+  round_shares_down: true
+
+poll_interval_seconds: 15
+cold_start_lookback_seconds: 0  # 0 = ignore all history on first run
+fetch_limit: 50
+db_path: polycopy.db
+live: false                     # must be true AND --live passed to trade for real
