@@ -1,0 +1,151 @@
+---
+title: "{{STUDY_NAME}} — 01e Ingest EEG features"
+subtitle: "Preprocessed feature export → canonical long table in the study's ID and timepoint vocabulary"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-summary: "Show code"
+    embed-resources: true
+    df-print: kable
+execute:
+  warning: true
+  message: false
+---
+
+## Overview
+
+The EEG that reaches this pipeline has already been preprocessed. Filtering,
+epoching, artifact rejection and averaging were done in the EEG tool
+(MNE, EEGLAB, ERPLAB or BrainVision Analyzer), and what it exported is a long
+table: one row per participant, session, channel, condition and measure.
+This stage does not touch the signal. It does three things: renames the
+export's columns to the pipeline's names through the crosswalk in
+`eeg.columns`, brings the participant IDs into the study's format
+(`sub-0012` becomes `0012`), and maps the export's session labels to the
+declared timepoints through `eeg.session_map`.
+
+Run it after 00 and before 02e. Nothing here is scored or gated on quality;
+02e does that on the file this stage writes.
+
+```{r}
+#| label: setup
+suppressPackageStartupMessages({ library(fearlabr); library(dplyr) })
+config <- read_config()
+stem <- fearlabr_file_stem(config)
+builder_stage_gate("01e_ingest_eeg")
+raw_dir <- resolve_path(config$paths$raw_data, config)
+validation_dir <- resolve_path(config$paths$validation %||% "output/validation", config)
+figures_dir <- resolve_path(config$paths$figures %||% "output/figures", config)
+for (d in c(validation_dir, figures_dir)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+```
+
+## Which files
+
+```{r}
+#| label: files
+log_section("EEG export files")
+files <- builder_glob_files(config, config$eeg$file_glob)
+if (!length(files)) stop("No EEG export matches eeg.file_glob '", config$eeg$file_glob,
+                         "' under ", raw_dir, ". Drop the export there and re-render.")
+cat("• ", length(files), " file(s): ", paste(basename(files), collapse = ", "), "\n", sep = "")
+cat("• Crosswalk: ", paste(names(config$eeg$columns), unlist(config$eeg$columns),
+                           sep = " <- ", collapse = ", "), "\n", sep = "")
+```
+
+## Ingest
+
+The ID print below is the line to read. `distinct` is the number of people in
+the export; `format-fail` is how many IDs do not match the study's pattern
+after the prefix strip and padding. A nonzero format-fail is a crosswalk or
+transform problem, not a data problem, and it will under-join later.
+
+```{r}
+#| label: ingest
+log_section("Ingest")
+eeg_long <- ingest_eeg_features(config, files = files, write = TRUE)
+cat("✓ ", nrow(eeg_long), " rows; ", dplyr::n_distinct(eeg_long$study_id), " participants; ",
+    dplyr::n_distinct(eeg_long$channel), " channels; ",
+    dplyr::n_distinct(eeg_long$measure), " measure(s)\n", sep = "")
+cat("✓ Wrote ", stem, "_eeg_features_latest.rds to ", raw_dir, "\n", sep = "")
+```
+
+## Session to timepoint
+
+Every export session label must map to a declared timepoint. A session that
+maps to nothing is kept with `timepoint = NA` so it shows up here and in 02e,
+rather than vanishing.
+
+```{r}
+#| label: sessions
+eeg_long |>
+  count(eeg_session, timepoint, name = "n_rows") |>
+  mutate(n_participants = purrr::map2_int(eeg_session, timepoint, ~ n_distinct(
+    eeg_long$study_id[eeg_long$eeg_session %in% .x & (is.na(.y) | eeg_long$timepoint %in% .y)])))
+```
+
+## Quick look: values by measure and condition
+
+Before any QC rule runs, the raw distributions. Look for a measure whose
+values sit on the wrong scale (microvolts exported as volts show up as a
+band around zero) or a condition present in one session and absent from
+another.
+
+```{r}
+#| label: quicklook
+#| fig-width: 10
+#| fig-height: 4
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  p <- ggplot2::ggplot(eeg_long, ggplot2::aes(x = timepoint, y = value, fill = condition)) +
+    ggplot2::geom_boxplot(outlier.size = 0.6) +
+    ggplot2::facet_wrap(~ measure, scales = "free_y") +
+    ggplot2::labs(x = NULL, y = "Exported value") +
+    ggplot2::theme_minimal(base_size = 11)
+  ggplot2::ggsave(file.path(figures_dir, paste0(stem, "_eeg_raw_values.png")), p, width = 10, height = 4, dpi = 120)
+  print(p)
+}
+eeg_long |>
+  summarise(n = n(), min = min(value, na.rm = TRUE), median = median(value, na.rm = TRUE),
+            max = max(value, na.rm = TRUE), n_missing = sum(is.na(value)), .by = c(measure, condition))
+```
+
+## Coverage against the roster
+
+Expected participants come from the REDCap participant-level file when 03 has
+run; otherwise from the export itself, which can only show gaps within the
+people who have EEG at all. The coverage file feeds 00b and 07m.
+
+```{r}
+#| label: coverage
+#| fig-width: 8
+#| fig-height: 6
+roster_path <- file.path(resolve_path(config$paths$derived, config),
+                         paste0(stem, "_redcap_participant_level_latest.rds"))
+expected <- if (file.exists(roster_path)) {
+  r <- readRDS(roster_path); as.character(r[[config$redcap$id_column]])
+} else {
+  cat("⚠️ No REDCap participant-level file yet; coverage is relative to the EEG export only\n")
+  unique(eeg_long$study_id)
+}
+cov <- timepoint_coverage(eeg_long, "study_id", "timepoint", config, modality = "eeg",
+                          expected_ids = expected)
+cov_summary <- timepoint_coverage_summary(cov)
+readr::write_csv(cov_summary, file.path(validation_dir, paste0(stem, "_coverage_eeg.csv")))
+cat("✓ Coverage written: ", stem, "_coverage_eeg.csv\n", sep = "")
+if (requireNamespace("ggplot2", quietly = TRUE)) print(plot_timepoint_completeness(cov))
+cov_summary
+```
+
+## What happens next
+
+02e reads `<stem>_eeg_features_latest.rds`, applies the QC rules in
+`eeg.qc`, and reduces the long table to the features named in
+`eeg.features`. Approve this stage once the ID line shows zero format
+failures, every session maps to a timepoint you recognise, and the value
+scales look like the units the export claims.
+
+```{r}
+#| label: record
+builder_record_render("01e_ingest_eeg")
+```

@@ -1,0 +1,141 @@
+---
+title: "{{STUDY_NAME}} — 02s Sensor coverage"
+subtitle: "Valid days by the declared rule, coverage per participant, days assigned to timepoints"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-summary: "Show code"
+    embed-resources: true
+    df-print: kable
+execute:
+  warning: true
+  message: false
+---
+
+## Overview
+
+A day of actigraphy with the watch on the nightstand is not a day of data.
+Each stream's `valid_day_rule` in the config says what counts (for wrist
+actigraphy, commonly at least 600 wear minutes), and this stage prints the
+rule verbatim, applies it, and shows the result as a participant-by-day tile
+so a device that stopped recording is visible as a run of orange.
+
+Days are then assigned to the declared timepoints using each participant's
+anchor date from REDCap (`timepoints.anchor_date_column`), so sensor coverage
+can be reported in the same wave vocabulary as everything else.
+
+```{r}
+#| label: setup
+suppressPackageStartupMessages({ library(fearlabr); library(dplyr) })
+config <- read_config()
+stem <- fearlabr_file_stem(config)
+builder_stage_gate("02s_qc_sensor")
+raw_dir <- resolve_path(config$paths$raw_data, config)
+derived_dir <- resolve_path(config$paths$derived, config)
+validation_dir <- resolve_path(config$paths$validation %||% "output/validation", config)
+figures_dir <- resolve_path(config$paths$figures %||% "output/figures", config)
+for (d in c(derived_dir, validation_dir, figures_dir)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+streams <- names(config$sensors$streams)
+```
+
+## Anchor dates
+
+```{r}
+#| label: anchors
+roster_path <- file.path(derived_dir, paste0(stem, "_redcap_participant_level_latest.rds"))
+anchor_col <- config$timepoints$anchor_date_column
+anchors <- if (file.exists(roster_path) && !is.null(anchor_col)) {
+  r <- readRDS(roster_path)
+  if (!anchor_col %in% names(r)) stop("timepoints.anchor_date_column '", anchor_col,
+                                      "' is not in the participant-level file.")
+  tibble(study_id = as.character(r[[config$redcap$id_column]]), anchor_date = as.Date(r[[anchor_col]]))
+} else {
+  cat("⚠️ No participant-level file or no anchor_date_column; timepoints cannot be assigned yet\n")
+  NULL
+}
+if (!is.null(anchors)) {
+  id_audit_line(anchors$study_id, "REDCap anchors")
+  cat("• ", sum(is.na(anchors$anchor_date)), " participant(s) with a missing anchor date\n", sep = "")
+}
+```
+
+## Streams
+
+```{r}
+#| label: streams
+#| fig-width: 10
+#| fig-height: 6
+coverage_all <- list(); summaries <- list()
+for (sk in streams) {
+  f <- file.path(raw_dir, paste0(stem, "_sensor_", sk, "_day_latest.rds"))
+  if (!file.exists(f)) { cat("⏭ ", sk, ": no day table from 01s\n", sep = ""); next }
+  log_section(paste0("Stream: ", sk))
+  rule <- config$sensors$streams[[sk]]$valid_day_rule
+  cat("• valid_day_rule: ", rule, "\n", sep = "")
+  day <- readRDS(f) |> sensor_valid_days(rule)
+  cat("✓ ", sum(day$valid_day), " of ", nrow(day), " participant-days valid (",
+      round(100 * mean(day$valid_day), 1), "%)\n", sep = "")
+  if (requireNamespace("ggplot2", quietly = TRUE)) {
+    p <- plot_sensor_coverage(day) + ggplot2::labs(title = paste0(sk, ": ", rule))
+    ggplot2::ggsave(file.path(figures_dir, paste0(stem, "_sensor_", sk, "_valid.png")), p,
+                    width = 10, height = 6, dpi = 120)
+    print(p)
+  }
+  cov <- sensor_coverage(day)
+  readr::write_csv(cov, file.path(validation_dir, paste0(stem, "_sensor_", sk, "_coverage.csv")))
+  summaries[[sk]] <- cov |> mutate(sensor_stream = sk, .before = 1)
+
+  if (!is.null(anchors)) {
+    day <- link_sensor_to_timepoints(day, anchors, config)
+    cat("• ", sum(!is.na(day$timepoint)), " of ", nrow(day), " days fall inside a declared window\n", sep = "")
+    coverage_all[[sk]] <- timepoint_coverage(day |> filter(valid_day), "study_id", "timepoint", config,
+                                             modality = "sensors", expected_ids = anchors$study_id) |>
+      mutate(sensor_stream = sk)
+  }
+  write_versioned_rds(day, paste0(stem, "_sensor_", sk, "_day_valid"), derived_dir)
+  write_latest_rds(day, paste0(stem, "_sensor_", sk, "_day_valid"), derived_dir)
+  cat("✓ Wrote ", stem, "_sensor_", sk, "_day_valid_latest.rds\n", sep = "")
+}
+bind_rows(summaries) |>
+  summarise(n_participants = n(), median_valid_days = median(n_valid_days),
+            min_valid_days = min(n_valid_days), pct_under_7_valid = round(100 * mean(n_valid_days < 7), 1),
+            .by = sensor_stream)
+```
+
+## Coverage by timepoint
+
+Participants counted as observed at a timepoint have at least one valid day
+inside that timepoint's window. The file written here feeds 00b and 07m.
+
+```{r}
+#| label: coverage
+#| fig-width: 8
+#| fig-height: 6
+if (length(coverage_all)) {
+  cov <- bind_rows(coverage_all)
+  # One modality row per timepoint: observed if any stream has a valid day there.
+  cov_any <- cov |> summarise(observed = any(observed), n_obs = sum(n_obs),
+                              .by = c(study_id, timepoint, modality))
+  cov_summary <- timepoint_coverage_summary(cov_any)
+  readr::write_csv(cov_summary, file.path(validation_dir, paste0(stem, "_coverage_sensors.csv")))
+  cat("✓ Coverage written: ", stem, "_coverage_sensors.csv\n", sep = "")
+  if (requireNamespace("ggplot2", quietly = TRUE)) print(plot_timepoint_completeness(cov_any))
+  cov_summary
+} else {
+  cat("⏭ Timepoint coverage skipped: anchors unavailable (run 03 first, or set timepoints.anchor_date_column)\n")
+}
+```
+
+## What happens next
+
+07m joins the valid-day tables to REDCap and the other modalities. Approve
+this stage when the rule printed above is the one the protocol states, the
+tile shows the gaps you already know about and no others, and the
+per-participant table has no one with an implausible valid-day count.
+
+```{r}
+#| label: record
+builder_record_render("02s_qc_sensor")
+```

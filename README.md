@@ -1,6 +1,6 @@
 # Claude Code R Skills
 
-*Version 1.2.4 | Last updated: 2026-04-05*
+*Version 1.3.0 | Last updated: 2026-09-04*
 
 A curated collection of Claude Code configurations for modern R use. These skills, rules, commands, and agents help Claude Code understand R best practices and generate idiomatic, high-quality R code. Additionally the rules and commands help with efficient token usage and enforce constraints, and agents can perform specific tasks. Obviously you can fork and adapt any of these to your case-use.
 
@@ -196,7 +196,7 @@ claude-research → /plan → claude-dev → /tdd → implement → /verify → 
 
 ## Features
 
-### Skills (8 public + 1 local)
+### Skills (9 public + 1 local)
 
 | Skill | Description |
 |--------------------------|----------------------------------------------|
@@ -208,6 +208,7 @@ claude-research → /plan → claude-dev → /tdd → implement → /verify → 
 | **r-package-development** | Dependencies, API design, testing |
 | **r-bayes** | brms, DAG validation, multilevel models, marginaleffects |
 | **tdd-workflow** | Test-driven development with testthat |
+| **pipeline-builder** | Step-by-step study pipeline builder on fearlabr: timepoint declaration, EEG/ERP and sensor modality modules, `_pipeline.yml` build record, visual verification gate per stage |
 
 *Local-only (not in public repo):*
 
@@ -394,6 +395,7 @@ claude-code-r-skills/
 │       ├── r-oop/
 │       ├── r-package-development/
 │       ├── r-bayes/
+│       ├── pipeline-builder/          # SKILL.md, USAGE.md, references/, assets/ (fearlabr 0.2.0 modules, QMD templates), scripts/
 │       └── tdd-workflow/
 ├── hooks/
 │   └── hooks.json                   # Plugin hooks (bundled with plugin)
