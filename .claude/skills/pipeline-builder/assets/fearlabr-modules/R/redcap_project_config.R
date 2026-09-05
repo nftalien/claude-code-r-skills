@@ -270,6 +270,23 @@ redcap_derive_instruments <- function(metadata, instruments_tbl = NULL, id_colum
     if (nrow(keep) < min_items) next
     lo <- as_whole(keep$lo[1]); hi <- as_whole(keep$hi[1]); n <- nrow(keep)
     ikey <- slug(form)
+    # Strength: a scored instrument has a calc field, or several items on a
+    # Likert-like range. Yes/no-only forms and forms whose names say they are
+    # administrative (fidelity, interview, monitoring, consent, demographics,
+    # screeners, TLFB, contact, visit, randomization) are listed as weak
+    # candidates in the todo and left out of the proposal, so the person adds
+    # them back deliberately rather than removing thirty by hand.
+    calc_here <- metadata[metadata$form_name == form & tolower(metadata$field_type) == "calc", ]
+    admin_name <- grepl("fidelity|interview|monitoring|consent|demograph|screen|tlfb|contact|visit|randomi|withdraw|^ae_|adverse|eligib|enrol|passcode|icf", ikey)
+    binary_only <- (hi - lo) <= 1
+    weak <- nrow(calc_here) == 0 && (binary_only || admin_name)
+    if (weak) {
+      todo[[length(todo) + 1]] <- tibble::tibble(
+        section = "instruments", key = ikey, status = "ask",
+        note = paste0("not proposed: ", if (binary_only) paste0(n, " yes/no items and no calc field") else "form name suggests an administrative form",
+                      if (admin_name && !binary_only) "" else "", "; add it as an instrument if it is scored"))
+      next
+    }
     # The items' shared stem ("ius" from ius1..ius12, "phq" from phq_1..phq_9)
     # is what a calc field's name carries in front of the subscale name.
     stem <- sub("[0-9_]+$", "", Reduce(function(a, b) {

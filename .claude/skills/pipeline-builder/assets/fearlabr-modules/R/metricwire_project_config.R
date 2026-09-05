@@ -193,6 +193,22 @@ metricwire_project_read <- function(config = NULL, data = NULL, codebooks = NULL
       if (file.exists(p)) { df <- metricwire_read_analysis_data(p); how <- basename(p) }
     }
     if (is.null(df)) {
+      # Codebook-only: no export yet, but the codebook names the items. The
+      # session is carried with zero rows so the item block can be proposed
+      # from declared ranges; observed ranges, the Missed check, prompt
+      # blocks and the ID field wait for the first pull.
+      cb_path <- codebooks[[k]] %||% sess$codebook
+      if (!is.null(cb_path)) {
+        cb_path <- if (fs::is_absolute_path(cb_path) || file.exists(cb_path)) cb_path else here::here(cb_path)
+        if (file.exists(cb_path)) {
+          cb0 <- metricwire_read_codebook(cb_path)
+          df <- tibble::as_tibble(stats::setNames(replicate(length(cb0$quest_code), character(0), simplify = FALSE), cb0$quest_code))
+          how <- "codebook only (no data)"
+          cat("⚠️ ", k, ": no data; carried from the codebook alone (", nrow(cb0), " items)\n", sep = "")
+        }
+      }
+    }
+    if (is.null(df)) {
       cat("⚠️ ", k, ": no data (no file, no credentials, nothing passed); session skipped\n", sep = "")
       next
     }
@@ -250,6 +266,27 @@ mw_item_slug <- function(item_text, item_choice = NA_character_, max_words = 4) 
   paste(utils::head(w, max_words), collapse = "_")
 }
 
+#' Map every data column to the codebook code it belongs to.
+#'
+#' Exact match first; then the longest code that the column starts with
+#' followed by "_" (FarmTok-style quest_<base>_<version> variants, which
+#' the pipeline coalesces into one item); then a code whose digits end the
+#' column name. NA when nothing matches.
+mw_column_to_code <- function(columns, quest_codes) {
+  out <- rep(NA_character_, length(columns))
+  codes <- quest_codes[order(-nchar(quest_codes))]
+  for (j in seq_along(columns)) {
+    col <- columns[j]
+    if (col %in% quest_codes) { out[j] <- col; next }
+    pre <- codes[startsWith(col, paste0(codes, "_"))]
+    if (length(pre)) { out[j] <- pre[1]; next }
+    d <- sub("^quest_", "", codes)
+    tail_hit <- codes[nzchar(d) & grepl(paste0("(^|[^0-9])", d, "$"), col)]
+    if (length(tail_hit) == 1) out[j] <- tail_hit
+  }
+  out
+}
+
 #' Match codebook quest codes to data columns (exact, then trailing digits).
 mw_match_columns <- function(quest_codes, columns) {
   out <- match_codebook_to_columns(quest_codes, columns)
@@ -295,7 +332,9 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
                           arm = "all", file = st$file)
     if (is.na(st$analysis_id)) note("metricwire", paste0("sessions.", k, ".analysis_id"), "ask", "not known from the data; from the MetricWire analysis page")
     note("metricwire", paste0("sessions.", k, ".arm"), "default", "all; set the arm if only one condition receives this battery")
-    if (!"response_type" %in% names(df)) {
+    if (nrow(df) == 0) {
+      note("metricwire", paste0("sessions.", k, ".missed_rows"), "ask", "no data yet (codebook only); the Missed-rows check, observed ranges, prompt blocks and the ID field are pending the first pull")
+    } else if (!"response_type" %in% names(df)) {
       note("metricwire", paste0("sessions.", k, ".response_type"), "ask", "no Response Type column; compliance cannot be computed from this export")
     } else if (n_miss == 0) {
       note("metricwire", paste0("sessions.", k), "ask",
@@ -305,7 +344,7 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
     }
     sess_detail[[k]] <- tibble::tibble(key = k, n_rows = nrow(df), n_submitted = n_sub, n_missed = n_miss,
                                        n_question_columns = length(mw_question_columns(df)),
-                                       survey_names = paste(sort(unique(df$source_name %||% NA)), collapse = " | "))
+                                       survey_names = if ("source_name" %in% names(df)) paste(sort(unique(stats::na.omit(df$source_name))), collapse = " | ") else NA_character_)
   }
 
   # 2. Items: union of question columns, matched to codebook and coding
@@ -314,12 +353,13 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
     df <- frames[[k]]; qcols <- mw_question_columns(df)
     cb <- project$codebooks[[k]]; cod <- project$coding[[k]]
     submitted <- if ("response_type" %in% names(df)) grepl("^submi", df$response_type, ignore.case = TRUE) else rep(TRUE, nrow(df))
-    cb_col <- if (!is.null(cb) && nrow(cb)) mw_match_columns(cb$quest_code, qcols) else character(0)
+    col_code <- if (!is.null(cb) && nrow(cb)) mw_column_to_code(qcols, cb$quest_code) else rep(NA_character_, length(qcols))
+    names(col_code) <- qcols
     for (col in qcols) {
       v <- df[[col]][submitted]; v <- v[!is.na(v) & nzchar(v)]
       num <- suppressWarnings(as.numeric(v))
       pct_num <- if (length(v)) mean(!is.na(num)) else NA_real_
-      i <- if (length(cb_col)) which(cb_col == col)[1] else NA_integer_
+      i <- if (!is.na(col_code[[col]])) which(cb$quest_code == col_code[[col]])[1] else NA_integer_
       item_text <- if (!is.na(i)) cb$item_text[i] else NA_character_
       qcode <- if (!is.na(i)) cb$quest_code[i] else sub("^(quest_[0-9]+).*$", "\\1", col)
       qtype <- if (!is.na(i)) toupper(cb$question_type[i] %||% NA) else NA_character_
@@ -340,6 +380,12 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
   }
   items <- dplyr::bind_rows(item_rows)
   if (!nrow(items)) stop("[metricwire_project_to_config] no question columns found in any session.", call. = FALSE)
+  # Information-only questions (field-group headers) are not items.
+  info <- !is.na(items$question_type) & grepl("^INFORMATION", items$question_type)
+  if (any(info)) {
+    note("metricwire", "ema_items.information", "derived", paste0(sum(info), " information-only question(s) dropped: ", paste(unique(items$name[info]), collapse = ", ")))
+    items <- items[!info, ]
+  }
   # One row per item across sessions: same quest code = same item.
   items_u <- items |>
     dplyr::summarise(
@@ -425,7 +471,9 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
                    hi = suppressWarnings(max(as.numeric(vals[grepl(id_pattern, vals)]), na.rm = TRUE)))
   })
   id_column <- "TODO"; id_range <- NULL
-  if (nrow(id_scores) && max(id_scores$pct_match) >= 0.5) {
+  if (!nrow(id_scores) && all(vapply(frames, nrow, integer(1)) == 0)) {
+    note("metricwire", "id_column", "ask", "no data yet; the account field holding the participant id is decided on the first pull")
+  } else if (nrow(id_scores) && max(id_scores$pct_match) >= 0.5) {
     best <- id_scores[which.max(id_scores$pct_match), ]
     id_column <- best$field
     id_range <- if (is.finite(best$lo)) as_whole(c(best$lo, best$hi)) else NULL
@@ -434,7 +482,7 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
          paste0(best$field, ": ", round(100 * best$pct_match), "% of values match ", id_pattern,
                 if (length(others)) paste0("; also matches in ", paste(others, collapse = ", "), " (a coalesce resolver as in UFOs may be needed)") else ""))
     if (!is.null(id_range)) note("metricwire", "id_range", "inferred", paste0("observed ", id_range[1], "-", id_range[2], "; declare the protocol's range so out-of-range tokens are rejected"))
-  } else {
+  } else if (nrow(id_scores) || any(vapply(frames, nrow, integer(1)) > 0)) {
     note("metricwire", "id_column", "ask", paste0("no account field matches ", id_pattern, " in >= 50% of rows; candidates: ", paste(id_candidates, collapse = ", ")))
   }
 
@@ -455,7 +503,7 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
     token_url = mw$token_url %||% "https://consumer-api.metricwire.com/oauth/token",
     oauth_id_service = mw$oauth_id_service %||% "mw_client_id", oauth_id_key = mw$oauth_id_key %||% "TODO",
     oauth_secret_service = mw$oauth_secret_service %||% "mw_client_secret", oauth_secret_key = mw$oauth_secret_key %||% "TODO",
-    id_column = id_column, id_fields = as.list(id_scores$field[id_scores$pct_match > 0]),
+    id_column = id_column, id_fields = if (nrow(id_scores)) as.list(id_scores$field[id_scores$pct_match > 0]) else list(),
     redcap_link_field = config$redcap$id_column %||% "id",
     sessions = sessions,
     ema_items = ema_items,

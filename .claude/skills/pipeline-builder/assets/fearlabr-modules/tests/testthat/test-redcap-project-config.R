@@ -186,3 +186,23 @@ test_that("write_proposed_config writes the proposal and todo and leaves _config
   expect_true(assert_timepoints_declared(back))
   expect_output(redcap_config_report(prop), "To confirm with the study team")
 })
+
+
+test_that("yes/no-only and administrative forms are weak candidates, listed not proposed", {
+  p <- read_fixture()
+  md <- p$metadata
+  extra <- tibble::tibble(field_name = c(paste0("fid_", 1:4), paste0("mh_", 1:3)),
+                          form_name = c(rep("het_fidelity_checklist_session_1", 4), rep("mental_health_history", 3)),
+                          section_header = NA, field_type = c(rep("radio", 4), rep("yesno", 3)), field_label = "x",
+                          select_choices_or_calculations = c(rep("1, Yes | 2, No | 3, Partial", 4), rep(NA, 3)),
+                          field_note = NA, text_validation_type_or_show_slider_number = NA, text_validation_min = NA,
+                          text_validation_max = NA, identifier = NA, branching_logic = NA)
+  for (col in setdiff(names(md), names(extra))) extra[[col]] <- NA_character_
+  md2 <- dplyr::bind_rows(md, extra[, names(md)])
+  inst <- redcap_derive_instruments(md2, id_column = "record_id")
+  expect_false("het_fidelity_checklist_session_1" %in% names(inst$instruments))   # administrative name
+  expect_false("mental_health_history" %in% names(inst$instruments))              # yes/no only, no calc
+  expect_true(all(c("phq9", "ius12", "audit") %in% names(inst$instruments)))
+  expect_true(any(inst$todo$key == "het_fidelity_checklist_session_1" & grepl("not proposed", inst$todo$note)))
+  expect_true(any(inst$todo$key == "mental_health_history" & grepl("yes/no", inst$todo$note)))
+})

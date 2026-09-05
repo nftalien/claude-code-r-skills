@@ -76,6 +76,10 @@ test_that("names, question columns, coding strings and slugs parse", {
   expect_equal(mw_item_slug("Since the last prompt, did a stressful event happen?"), "stressful_event_happen")
   expect_equal(mw_match_columns(c("quest_101", "quest_120"), c("quest_101", "Resist temptation...120")),
                c("quest_101", "Resist temptation...120"))
+  expect_equal(mw_column_to_code(c("quest_1720186517574_1744981503048", "quest_1720186517574_1744981503048_1744984140552",
+                                   "quest_1744984169342", "quest_999"),
+                                 c("quest_1720186517574", "quest_1744984169342")),
+               c("quest_1720186517574", "quest_1720186517574", "quest_1744984169342", NA))
 })
 
 test_that("readers: analysis data, codebook CSV, choicesDataCoding", {
@@ -186,4 +190,32 @@ test_that("merge_proposals combines a REDCap and a MetricWire proposal and write
   back <- yaml::read_yaml(file.path(d, "_config.proposed.yml"))
   expect_equal(back$metricwire$ema_items[[1]]$name, "afraid")
   expect_output(metricwire_config_report(b), "NO Missed rows")
+})
+
+
+test_that("a session with a codebook but no data is carried codebook-only", {
+  d <- mw_fixture()
+  expect_output(p <- metricwire_project_read(
+    config = list(metricwire = list(sessions = list(period_1 = list(analysis_id = "a1", analysis_name = "P1")))),
+    codebooks = list(period_1 = file.path(d, "codebook_items.csv"))), "codebook alone")
+  expect_equal(nrow(p$data$period_1), 0); expect_equal(p$sessions$read_from, "codebook only (no data)")
+  prop <- metricwire_project_to_config(p, id_pattern = "^[0-9]{4}$")
+  mw <- prop$config$metricwire; t <- prop$todo
+  nm <- vapply(mw$ema_items, function(i) i$name, character(1))
+  expect_true(all(c("afraid", "nervous", "upset") %in% nm))
+  expect_equal(mw$ema_items[[which(nm == "afraid")]]$range, c(0L, 4L))     # codebook range, inferred
+  expect_true(any(t$key == "ema_items.afraid.range" & t$status == "inferred"))
+  expect_true(any(t$key == "sessions.period_1.missed_rows" & t$status == "ask" & grepl("no data yet", t$note)))
+  expect_true(any(t$key == "id_column" & grepl("no data yet", t$note)))
+  expect_equal(mw$id_column, "TODO")
+  expect_equal(unlist(mw$free_text_fields), "anything_else_day")
+  # information-only questions are dropped, not scored
+  cb <- readr::read_csv(file.path(d, "codebook_items.csv"), show_col_types = FALSE, col_types = readr::cols(.default = "c"))
+  cb <- dplyr::bind_rows(cb, tibble::tibble(quest_code = "quest_900", item_text = "Section header", question_type = "INFORMATION_QUESTION"))
+  readr::write_csv(cb, file.path(d, "codebook_items2.csv"), na = "")
+  p2 <- metricwire_project_read(config = list(metricwire = list(sessions = list(period_1 = list(analysis_id = "a1")))),
+                                codebooks = list(period_1 = file.path(d, "codebook_items2.csv")))
+  prop2 <- metricwire_project_to_config(p2, id_pattern = "^[0-9]{4}$")
+  expect_false("section_header" %in% vapply(prop2$config$metricwire$ema_items, function(i) i$name, character(1)))
+  expect_true(any(prop2$todo$key == "ema_items.information"))
 })
