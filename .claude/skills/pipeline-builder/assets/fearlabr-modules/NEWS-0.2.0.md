@@ -29,6 +29,14 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   (generation waits on approved dependencies; approval requires a render;
   resetting a stage resets everything downstream), `next_stage()`,
   `pipeline_status_table()`, `pipeline_dag_mermaid()`, `plot_pipeline_dag()`.
+* `R/redcap_project_config.R`: propose `_config.yml` from the REDCap
+  project. `redcap_project_read()` (API through an injectable transport, or
+  the data dictionary, events and instrument-event mapping exports),
+  `redcap_project_to_config()` (events, timepoints with offsets and windows,
+  instruments with items, ranges, calc totals and subscales, conditions,
+  identifiers, structural skips) with a todo table marking every value
+  derived, inferred, defaulted or to ask; `redcap_config_report()`,
+  `write_proposed_config()` (never overwrites `_config.yml`).
 * `R/quicklook.R`: `summarise_render_log()`, `modality_coverage_dashboard()`
   / `plot_coverage_dashboard()`, `plot_ema_compliance_heatmap()`.
 * `R/synthetic_modalities.R`: `generate_synthetic_eeg()`,
@@ -36,7 +44,8 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   write fake exports with the export column names and session labels the
   config declares, at the paths the ingest globs read.
 * Tests: `test-timepoints.R`, `test-eeg.R`, `test-sensor.R`,
-  `test-manifest.R`, `test-quicklook.R`, `test-synthetic-modalities.R`
+  `test-manifest.R`, `test-quicklook.R`, `test-synthetic-modalities.R`,
+  `test-redcap-project-config.R`
   (helper `helper-builder-config.R`).
 * `ggplot2` stays in Suggests; every plot function returns its table with a
   message when ggplot2 is absent.

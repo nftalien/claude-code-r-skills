@@ -26,12 +26,24 @@ than a question you answer by hand.
 
 ## A session, from your side
 
-**1. Say what you have.** "Build a pipeline for STUDY. Three waves: baseline,
-week 4, week 12. REDCap at all three, EEG at baseline and week 12, wrist
-actigraphy throughout." Claude interviews you for the rest: the anchor date
-field in REDCap, windows around each wave, the instruments, what the EEG
-export looks like, which device the actigraphy comes from. Where a question
-has a fixed set of answers you get buttons.
+**1. Let it read REDCap.** One command in the terminal (not the R console):
+
+```
+Rscript scripts/derive_config.R STUDY
+```
+
+With the project's API token in your keyring it pulls the events, the
+instrument-event mapping and the data dictionary and proposes the config:
+timepoints with offsets and windows, every instrument's items and ranges,
+calc fields for cross-validation, subscales, the randomization arms,
+identifier fields. Without a token, download those three exports from
+Project Setup into `metadata/` and pass them with `--dict`, `--events`,
+`--map`. You get `_config.proposed.yml` and a todo table that says what was
+read, what was inferred from a name, what was defaulted, and what only you
+can answer (the anchor date field, which timepoints have EEG or actigraphy,
+reverse-coded items, whether a form is really a scored instrument). Claude
+walks that table with you; where a question has a fixed set of answers you
+get buttons.
 
 **2. Drop the files in.** Claude tells you which files go where
 (`data/raw/`, `data/raw/eeg/`, `data/raw/sensor/`). When a file lands, paste
@@ -82,6 +94,7 @@ next; the coverage panel shows every modality against every timepoint.
 ```
 STUDY/
 ├── _config.yml          the study: timepoints, instruments, modalities, files
+├── _config.proposed.yml what REDCap said, before you confirmed it
 ├── _pipeline.yml        the build record: stages, dependencies, who approved what
 ├── notebooks/           00 … 10, plus 00b, 01e, 02e, 01s, 02s, 07m as the study needs
 ├── data/raw/            your exports (eeg/ and sensor/ subfolders for those)

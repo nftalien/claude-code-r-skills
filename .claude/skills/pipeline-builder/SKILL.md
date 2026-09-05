@@ -2,8 +2,11 @@
 name: pipeline-builder
 description: >-
   Build a FEAR Lab study data pipeline one stage at a time, with the person
-  verifying each stage's render before the next is generated. Interviews for
-  the study's timepoints, modalities and files, writes the _config.yml blocks
+  verifying each stage's render before the next is generated. Reads the REDCap
+  project first (API, or the data dictionary, events and instrument-event
+  exports) to propose the config with its timepoints, instruments, calc fields
+  and arms, interviews only for what REDCap cannot know (anchor date,
+  modalities per timepoint, files), writes the _config.yml blocks
   and the _pipeline.yml build record, generates numbered Quarto stages on the
   fearlabr engine (REDCap, MetricWire EMA, preprocessed EEG/ERP feature
   tables, passive sensor and actigraphy streams), and gates every stage on a
@@ -13,8 +16,9 @@ description: >-
   pipeline step by step", asks what files they need, mentions timepoints or
   waves across modalities, wants EEG/ERP, actigraphy, wearable or phone sensor
   data alongside REDCap or EMA, wants to see the pipeline as a diagram, asks
-  "what stage are we on", or wants to add a modality to an existing fearlabr
-  study. Also for applying the fearlabr 0.2.0 modality modules. Not for
+  "what stage are we on", wants the config derived from the REDCap data
+  dictionary or events instead of typed, or wants to add a modality to an
+  existing fearlabr study. Also for applying the fearlabr 0.2.0 modules. Not for
   one-off analyses, raw EEG preprocessing, or non-R work; the REDCap/EMA
   engine itself is the fearlabr-pipeline skill.
 ---
@@ -62,8 +66,10 @@ to watch the pipeline come together rather than receive a zip.
 - **Raw EEG stays in the EEG tool.** The pipeline ingests preprocessed
   feature tables. If asked to filter, epoch or reject artifacts in R, say so
   and point to `references/modality-eeg.md` for the export recipe.
-- **Files first, then config, then code.** When a person drops a file, read
-  its header and propose the crosswalk; never invent column names. A stage is
+- **REDCap first, then files, then config, then code.** The config proposal
+  comes from the project's own metadata (`derive_config.R`); the interview
+  confirms it. When a person drops a modality file, read its header and
+  propose the crosswalk; never invent column names. A stage is
   not generated for a modality whose files are absent unless the person says
   to proof on synthetic data.
 - **fearlabr >= 0.2.0.** Check `packageVersion("fearlabr")` in 00. Below
@@ -76,7 +82,8 @@ to watch the pipeline come together rather than receive a zip.
 ## Pick the mode
 
 **Mode A, build a new study.** "Build me a pipeline", "set up a workflow I
-can drop files into", "walk me through it".
+can drop files into", "walk me through it". Starts by reading the REDCap
+project (step 1), not by asking.
 
 **Mode B, add a modality to an existing fearlabr study.** "Add the EEG to
 UFOs", "we have actigraphy now". Read the existing `_config.yml` and
@@ -103,17 +110,37 @@ bug gets a regression test in the module's test file before the fix.
 
 ## The loop
 
-### 1. Interview and plan
+### 1. Read REDCap, then confirm
 
-Run `references/builder-interview.md`. It reuses fearlabr's config interview
-for study identity, REDCap, instruments and EMA, and adds timepoints and
-modalities. Prefer clickable prompts where the answer is a choice. Ask only
-what the files and prior materials cannot answer.
+REDCap already holds the events with their offsets and windows, which forms
+are collected at which event, every field's type, choices, validation
+range, calc formula, branching logic and identifier flag. Read it first;
+interview only for what it cannot know. Terminal, project root:
 
-The output is `_config.yml` with the blocks from
-`assets/config-modality-blocks.yml` spliced in (`timepoints` always; `eeg` and
-`sensors` when present), and `_pipeline.yml` from
-`new_pipeline_manifest(config)`. Before showing the plan:
+```
+Rscript scripts/derive_config.R <study>                       # API: token in the keyring
+Rscript scripts/derive_config.R <study> --dict metadata/DataDictionary.csv \
+    --events metadata/events.csv --map metadata/instrument_event_map.csv   # no token
+```
+
+That writes `_config.proposed.yml` and `metadata/config_todo.csv` and never
+touches `_config.yml`. Walk the todo table with the person, in this order:
+`ask` rows (anchor date field, non-REDCap modalities per timepoint,
+reverse-coded items, whether a detected form is a scored instrument, arms
+that are order rather than treatment), then `inferred` rows (an offset read
+from an event name such as `6_month`, a subscale name read from a calc
+field), then `default` rows (windows where REDCap's offset range is zero,
+`minimum_valid_items` at 80%). `derived` rows are shown, not asked. The
+rest of `references/builder-interview.md` covers what REDCap never holds:
+EMA, EEG, sensors, files, verification preferences.
+
+The proposal is confirmed, not trusted: the dictionary can disagree with the
+protocol, and a calc field can be wrong. Where the person's answer differs
+from the dictionary, the dictionary is corrected at the source and the
+config follows it; the config never papers over a dictionary error.
+
+Then merge the confirmed proposal into `_config.yml` with the modality
+blocks from `assets/config-modality-blocks.yml`, and:
 
 ```r
 assert_timepoints_declared(config)
@@ -250,8 +277,9 @@ that only works from a chat.
 
 ## What to read when
 
-- `references/builder-interview.md`: the question sequence and the file
-  prompts, before step 1.
+- `references/builder-interview.md`: what is read from REDCap, the todo
+  walk, the questions REDCap cannot answer, and the file prompts, before
+  step 1.
 - `references/verification-gates.md`: before reading any render, and in Mode D.
 - `references/pipeline-manifest.md`: manifest schema, rules, functions, and
   the stage contract addendum, before generating any stage.
@@ -264,12 +292,16 @@ that only works from a chat.
 
 - `assets/fearlabr-modules/`: fearlabr 0.2.0 modules (R, tests,
   `NAMESPACE.additions`, `NEWS-0.2.0.md`, `apply_modules.R`). Full suite on
-  0.1.1 + modules: 183 pass, 0 fail.
+  0.1.1 + modules: 200+ pass, 0 fail (see NEWS-0.2.0.md).
 - `assets/qmd-templates/`: 00b, 01e, 02e, 01s, 02s, 07m.
 - `assets/config-modality-blocks.yml`: `timepoints`, `eeg`, `sensors` blocks.
 - `assets/example-config-multimodal.yml`: complete proofable example (REDCap
   + EEG + sensors, three timepoints); what the proof script runs without a
   study config.
 - `assets/pipeline-manifest-template.yml`: the manifest shape, annotated.
+- `scripts/derive_config.R`: propose `_config.yml` from the REDCap project
+  (API, or the three Project Setup exports).
+- `assets/example-redcap-metadata/`: the three export files, fictional, as the
+  derivation expects them.
 - `scripts/proof_modalities.R`: synthetic proof of everything this skill adds.
 - `USAGE.md`: the human-facing guide.

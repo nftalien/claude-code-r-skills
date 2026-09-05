@@ -1,44 +1,82 @@
 # Builder interview
 
-The question sequence for Mode A (and the subset Mode B needs). It sits on
-top of fearlabr-pipeline's `references/config-interview.md`: run that for
-study identity, arms, REDCap, instruments, structural skips, MetricWire,
-paths, exclusions and de-id, then the sections here. Prefer clickable prompts
+The question sequence for Mode A (and the subset Mode B needs). It replaces the
+front half of fearlabr-pipeline's `references/config-interview.md`: study
+identity, arms, REDCap events, instruments, structural skips and de-id are
+read from the project and confirmed (sections 0 and 1); MetricWire, paths
+and exclusions still follow that file; the sections here add modalities. Prefer clickable prompts
 where the answer is a choice. Ask nothing the files already answer.
 
-Order matters: timepoints first, because every later answer is expressed in
-that vocabulary.
+Order matters: the REDCap read first, because every later answer is
+expressed in the timepoint vocabulary it produces.
 
-## 1. Timepoints (always)
+## 0. Read the project first (always)
 
-- **How many assessment timepoints, and what are they called?** Short keys
-  (`baseline`, `week4`, `fu_6mo`) become the vocabulary in every table. Labels
-  are for humans. Take the keys from the protocol's schedule of assessments.
-- **Which one is the anchor, and which REDCap field holds its date?**
-  Usually baseline and a consent or session-1 date field. Confirm the field
-  exists in the data dictionary; 02s stops if it is absent from the
-  participant-level file.
-- **Offset in days from the anchor for each timepoint.** Protocol numbers,
-  not observed medians.
-- **Window around each offset, in days, inclusive.** A visit window from
-  the protocol (`[-3, 7]`), or for a wave that is "whenever they came back",
-  a wide window that still cannot overlap its neighbours. Overlap stops the
-  config check; there is no tie-break rule and there should not be one.
-- **Which modalities are expected at each timepoint.** A modality left off
-  a timepoint is not counted as missing there. An EEG session only at
-  baseline and week 12 is expressed here, not in the EEG block.
-- **The REDCap event for each timepoint**, verbatim from the label file
-  (truncated names included).
+Run `scripts/derive_config.R` before asking anything. API when the keyring
+holds the token (`redcap.api_token_service` / `api_token_key` in a minimal
+`_config.yml`, or `REDCAP_API_URL` and `REDCAP_API_TOKEN` in the
+environment); otherwise the three Project Setup exports (data dictionary,
+events, instrument-event mapping) dropped in `metadata/`. It writes
+`_config.proposed.yml` and `metadata/config_todo.csv`.
 
-Write the block and run `assert_timepoints_declared()` before moving on.
+What it derives without asking: the ID column; every event with its raw
+name, label and whether a scored instrument is collected there; each
+instrument's items in dictionary order, item range, total range, the calc
+field that references every item, and subscales from the other calc fields;
+the randomization field and its arms; identifier-flagged fields and date
+fields for de-id; single-field branching logic as structural skips; all form
+names for `forms_to_pull`; with the API, the project title and instrument
+labels.
+
+What it infers and marks so: an offset read from an event name when REDCap's
+`day_offset` is zero (`6_month` gives 180); a subscale name from a calc
+field's name; the anchor date field when exactly one date-validated field
+sits on a form collected at the anchor event.
+
+What it defaults and marks so: a `[-7, 7]` window when REDCap's offset range
+is zero, narrowed where two defaults would overlap; `minimum_valid_items`
+at 80% of items.
+
+## 1. Walk the todo (always)
+
+Open `metadata/config_todo.csv` with the person. `ask` rows first:
+
+- **Anchor date field**, if more than one candidate or none.
+- **Modalities expected at each timepoint.** The proposal lists `redcap`
+  only; add `ema`, `eeg`, `sensors` per timepoint from the protocol.
+- **Is this form a scored instrument?** Every form with three or more
+  same-range items is proposed; a demographics or screening form can look
+  like one. Drop what is not scored. Confirm items excluded for having a
+  different range (a slider, a text field with its own bounds).
+- **Reverse-coded items.** Not in the dictionary. From the scale's manual.
+- **A form with no calc field.** Nothing to cross-validate the total
+  against; say so in the config note, or add the calc field in REDCap.
+- **Arms.** The randomization field's choices are proposed as conditions.
+  Confirm they are treatment and not order (UFOs is a crossover: its
+  `randomize` field is order).
+- **Offsets REDCap left at zero and the name did not give** (`posttx`,
+  `followup`). From the protocol.
+- **Multi-condition branching logic.** Listed, not converted; decide whether
+  each is a structural skip.
+
+Then `inferred` rows (confirm each number), then `default` rows (accept or
+change). `derived` rows are shown as a table, not asked. Timepoint keys may
+be renamed here (`week_4` to `week4`) as long as every reference in the
+proposal moves with them; the derive script uses the REDCap-derived key
+everywhere so a rename is one find-and-replace.
+
+Write the confirmed proposal into `_config.yml`, run
+`assert_timepoints_declared()`, and correct the dictionary at the source
+wherever the person's answer showed it wrong.
 
 ## 2. Modalities present
 
-Prompt: which of REDCap panel, MetricWire EMA, EEG/ERP, passive sensor or
-actigraphy. Multi-select. REDCap is always on. For anything else the person
+Prompt: which of MetricWire EMA, EEG/ERP, passive sensor or actigraphy are
+present. Multi-select. REDCap is already on. For anything else the person
 names that is not one of these ("fMRI", "EMG startle", "voice"), say the
 builder does not have a module for it yet, offer to keep it as a per-study
-`R/` helper with its own stage after 07m, and note it for Mode E.
+`R/` helper with its own stage after 07m, and note it for Mode E. Then add
+each present modality to the timepoints where it is expected.
 
 ## 3. EEG / ERP (if on)
 
@@ -116,7 +154,7 @@ invent entries.
 
 ## After the interview
 
-1. Write `_config.yml` (fearlabr blocks plus the ones above).
+1. Write `_config.yml` (the confirmed proposal plus the modality blocks).
 2. `assert_timepoints_declared(config)`.
 3. `new_pipeline_manifest(config)` and write `_pipeline.yml`.
 4. Show the DAG and the stage list; get a yes.
