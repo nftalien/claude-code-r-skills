@@ -60,6 +60,23 @@ without Missed rows and a declared range the data contradicts, the two
 things that cost the most time on the first real study. You still declare
 gates, safety thresholds and the battery map.
 
+For EEG and wearables there is nothing to query; the files are the
+metadata. Drop them in and run:
+
+```
+Rscript scripts/derive_modality_config.R --eeg-export 'data/raw/eeg/*_features.csv' --vhdr 'data/raw/eeg/*.vhdr'
+```
+
+From the feature export it proposes the column crosswalk, the id transform,
+the session-to-timepoint map, feature candidates and QC thresholds from the
+data; from the BrainVision header and BIDS sidecar it fills a recording
+block (sampling rate, reference, filters, amplifier) that your methods
+section and the reporting review read from the config. From the sensor
+exports it proposes one stream each with grain, metrics, a valid-day rule
+and the device details from the ActiGraph or GENEActiv preamble. You still
+say which timepoints expect each modality, the measurement window, and the
+time zone.
+
 **2. Drop the files in.** Claude tells you which files go where
 (`data/raw/`, `data/raw/eeg/`, `data/raw/sensor/`). When a file lands, paste
 its first lines or its column names; Claude writes the column crosswalk into

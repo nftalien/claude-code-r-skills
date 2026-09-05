@@ -45,6 +45,24 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   blocks by survey name, free text, safety candidates, the account field
   holding the participant ID), `metricwire_config_report()`,
   `merge_proposals()`; `metricwire_list_studies()` for GET /studies.
+* `R/eeg_project_config.R`: propose the `eeg` block from the files. Readers
+  for the feature export (`eeg_detect_columns()`, wide-layout detection),
+  BrainVision `.vhdr` / `.vmrk` (`brainvision_read_vhdr()`,
+  `brainvision_read_vmrk()`, `brainvision_marker_summary()`), BIDS
+  `*_eeg.json`, `participants.tsv`, `*_events.tsv`, and an ERPLAB bin
+  descriptor. `eeg_project_to_config()` derives the crosswalk, id transform,
+  session map against the declared timepoints, feature candidates, QC
+  thresholds from the distributions (marked default) and an `eeg.recording`
+  block (sampling rate, channels, reference, filters, amplifier, software)
+  kept in the config as the one source of truth for the methods section.
+* `R/sensor_project_config.R`: propose the `sensors` block from the exports.
+  `sensor_read_export()` parses ActiGraph and GENEActiv preambles and reads
+  plain tables (Fitbit, Garmin, Oura, AWARE, Beiwe, mindLAMP);
+  `sensor_detect_columns()` and `sensor_detect_grain()`;
+  `sensor_project_to_config()` derives one stream per export shape with
+  glob, grain and epoch length, columns, metrics, aggregation defaults, a
+  valid-day rule with the fraction of days it keeps, the id transform and
+  the device block; the time zone is asked unless configured.
 * `R/quicklook.R`: `summarise_render_log()`, `modality_coverage_dashboard()`
   / `plot_coverage_dashboard()`, `plot_ema_compliance_heatmap()`.
 * `R/synthetic_modalities.R`: `generate_synthetic_eeg()`,
@@ -53,7 +71,7 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   config declares, at the paths the ingest globs read.
 * Tests: `test-timepoints.R`, `test-eeg.R`, `test-sensor.R`,
   `test-manifest.R`, `test-quicklook.R`, `test-synthetic-modalities.R`,
-  `test-redcap-project-config.R`, `test-metricwire-project-config.R`
+  `test-redcap-project-config.R`, `test-metricwire-project-config.R`, `test-eeg-project-config.R`, `test-sensor-project-config.R`
   (helper `helper-builder-config.R`).
 * `ggplot2` stays in Suggests; every plot function returns its table with a
   message when ggplot2 is absent.

@@ -111,55 +111,73 @@ The `ask` rows for EMA:
 ## 2. Modalities present
 
 Prompt: which of EEG/ERP, passive sensor or actigraphy are present (EMA was
-handled in 1b). Multi-select. REDCap is already on. For anything else the person
+handled in 1b); their blocks are then read from the files in sections 3 and 4. Multi-select. REDCap is already on. For anything else the person
 names that is not one of these ("fMRI", "EMG startle", "voice"), say the
 builder does not have a module for it yet, offer to keep it as a per-study
 `R/` helper with its own stage after 07m, and note it for Mode E. Then add
 each present modality to the timepoints where it is expected.
 
-## 3. EEG / ERP (if on)
+## 3. EEG / ERP (if on): read, then walk
 
-Read `modality-eeg.md` first.
+Read `modality-eeg.md` first. Put the feature export and, when they exist,
+the BrainVision `.vhdr`/`.vmrk` files, the BIDS sidecars and the ERPLAB bin
+descriptor under `data/raw/eeg/`, then run `scripts/derive_modality_config.R`.
 
-- **Which tool preprocessed it?** MNE, EEGLAB/ERPLAB, BrainVision Analyzer,
-  other. This decides which export recipe to hand back.
-- **What does the export look like?** Ask for the first five lines or the
-  column names. If they paste them, build `eeg.columns` from what is there.
-  If the export is wide (one column per channel or per component), say the
-  0.2.0 module reads long only and give the reshape from the recipe file.
-- **Participant ID format in the export** versus REDCap: BIDS `sub-0012`
-  against `0012` is the usual case. Set `id_transform` and `id_pattern`.
-- **Session labels** in the export and which timepoint each is. This is
-  `session_map`. Every label must map; an unmapped session survives ingest
-  with `timepoint = NA` and is reported.
-- **Features the analysis plan names.** For each: name, measure as the export
-  calls it (`mean_amplitude`, `peak_latency`, `power`), condition, channels
-  to average, and the window in ms (recorded, not applied). At least one; a
-  feature that matches nothing stops 02e.
-- **QC thresholds.** Minimum trials per participant-session, plausible
-  amplitude range in the export's units, channels that must be present. If
-  they do not know, propose values from the component's literature and mark
-  them `# TODO confirm` in the config.
+What it derives: the column crosswalk by name (with the export columns it
+could not place listed); the id transform from the id shape and, when the
+REDCap roster exists, how many EEG ids it finds there; the session map by
+exact key or label, else by position among the timepoints that expect EEG;
+the channels present for every participant-session as `required_channels`;
+one feature candidate per measure x condition; the amplitude range from the
+0.5 and 99.5 percentiles and the trial floor from the 5th percentile, both
+marked default with the numbers; and `eeg.recording` (sampling rate,
+channels, reference, unit, hardware filters, amplifier, software, and from
+the BIDS sidecar the power-line frequency, software filters, cap and
+placement scheme). Marker codes, bin labels and event types are listed so
+the export's condition labels can be checked against them.
 
-## 4. Sensors / actigraphy (if on)
+The `ask` rows for EEG:
 
-Read `modality-sensor.md` first.
+- **A wide export.** Channels as columns cannot be crosswalked; reshape at
+  export (`modality-eeg.md`) or add a `pivot_longer` before ingest.
+- **Which timepoints expect EEG**, when the schedule lists none, or a
+  session label that matched no timepoint.
+- **The features the plan names** and their `window_ms`. The export does
+  not carry the window; it is in the preprocessing script.
+- **Thresholds** the protocol states, to replace the defaults.
+- **An id width that does not match REDCap** (three-digit BIDS ids against
+  four-digit REDCap ids): decide the transform, do not pad blindly.
+- **Headers that disagree** on sampling rate, or an amplifier not found in
+  the header comment.
 
-- **Device or source per stream**, and whether the export is one row per
-  day (daily summary) or many rows per day with a timestamp (epochs). One
-  stream per export type: `accel`, `sleep`, `hr`, `gps_mobility`.
-- **Column names** for id, date or timestamp, and every metric that will be
-  used. Again from the header, never from memory. Metrics get canonical names
-  (`steps`, `wear_minutes`, `sleep_minutes`) that the valid-day rule and 07m
-  refer to.
-- **Time zone** for epoch timestamps. One per study.
-- **Aggregation** for epoch streams: sum for counts and minutes, mean for
-  rates.
-- **The valid-day rule.** A one-line expression over the canonical metrics,
-  quoted in the render. Offer the common ones (`wear_minutes >= 600` for
-  wrist actigraphy; `sleep_minutes > 0` for sleep summaries) and ask which
-  the protocol or the lab's prior papers used.
-- **ID format** in the export versus REDCap.
+## 4. Sensors / actigraphy (if on): read, then walk
+
+Read `modality-sensor.md` first. Drop the exports under `data/raw/sensor/`
+and run `scripts/derive_modality_config.R` (with `--sensor key=glob` to name
+the streams, or without flags to group files by their column set).
+
+What it derives per stream: the glob from the file names; the vendor and
+device block from the ActiGraph or GENEActiv preamble (serial, epoch length,
+start and download dates, measurement frequency, time-zone offset); the
+grain from rows per participant-day and the epoch length from the preamble
+or the timestamp gaps (millisecond epoch timestamps from phone apps are
+recognised); id, date or timestamp columns and metrics by name against a
+vendor vocabulary, with unmatched columns listed; aggregation defaults for
+epoch streams (sum for counts and minutes, mean for rates); the valid-day
+rule at 600 wear minutes with the fraction of days it keeps, or
+`sleep_minutes > 0` for sleep summaries; and the id transform.
+
+The `ask` rows for sensors:
+
+- **Time zone.** Never in a plain table; the GENEActiv header gives an
+  offset, not a named zone. Pick the named zone.
+- **A stream with no id column.** One file per participant with the id in
+  the file name or the preamble's subject code, or exports keyed by device
+  serial that need a roster.
+- **No wear or sleep metric** to base a rule on: state the protocol's.
+- **Unmatched metric columns** worth keeping: add them to `metrics` with a
+  canonical name.
+- **No header row after the preamble**: re-export with column names.
 
 ## 5. Files
 

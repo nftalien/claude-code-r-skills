@@ -60,6 +60,40 @@ Sessions usually live in the ERPset name; if so, ask the person to add a
 "Area Information" tables, one row per marker; map `Channel`, `Marker`,
 `Value` in the crosswalk and put the session in the file name.
 
+## What is read from the files
+
+`scripts/derive_modality_config.R` proposes the block from the export and
+the recording files. BrainVision is read natively: the `.vhdr` header gives
+sampling interval, channel names with their reference and unit, and the
+Recorder comment block gives the amplifier and the hardware filter row (low
+cutoff in seconds, high cutoff in Hz, notch); the `.vmrk` marker file gives
+stimulus and response codes with their counts. BIDS sidecars add
+power-line frequency, software filters, cap, manufacturer and placement
+scheme; `participants.tsv` the id format; `*_events.tsv` trial types. An
+ERPLAB bin descriptor gives bin labels.
+
+Those recording parameters land in `eeg.recording` in `_config.yml`. The
+pipeline never computes on them; the methods section and the
+reporting-standards review (COBIDAS MEEG, ARTEM-IS) read them from there,
+which keeps one source of truth.
+
+```yaml
+eeg:
+  recording:
+    sampling_rate_hz: 500
+    n_channels: 32
+    reference: "common (unnamed in header)"     # or the named reference channel
+    unit: "µV"
+    hardware_filters: {low_cutoff_s: 10, high_cutoff_hz: 1000, notch_hz: "Off"}
+    amplifier: "BrainAmp DC amplifier"
+    software: "BrainVision Data Exchange Header File Version 1.0"
+    powerline_hz: 60                             # from *_eeg.json
+    software_filters: {highpass: {cutoff: 0.1}}
+    cap: "Easycap"
+    placement_scheme: "10-20"
+    source: "BrainVision header sub-001_ses-01_task-flanker_eeg.vhdr"
+```
+
 ## Config
 
 See `assets/config-modality-blocks.yml`. Points that go wrong:

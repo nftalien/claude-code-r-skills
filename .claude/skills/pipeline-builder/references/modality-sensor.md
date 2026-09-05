@@ -28,6 +28,21 @@ within-day stage would be a new grain and a new stage).
   aggregated per metric by `aggregate` (`sum` for counts and minutes, `mean`
   for rates, `max`/`min` if needed).
 
+## What is read from the exports
+
+`scripts/derive_modality_config.R` proposes each stream from its files.
+ActiGraph CSVs open with a ten-line preamble (`------------ Data File
+Created By ActiGraph ...`) carrying the serial, epoch period, start and
+download dates; GENEActiv exports open with a `key,value` header block
+under section titles down to `Recorded Data`, carrying the serial,
+measurement frequency, time-zone offset and subject code. Both are parsed
+into `streams.<k>.device`. Fitbit, Garmin, Oura and the phone apps (AWARE,
+Beiwe, mindLAMP) are plain tables; their metrics are matched by name and
+millisecond epoch timestamps are recognised. The preamble parsers were
+written from the documented layouts; the first real export of each device
+is the regression test, so keep one scrubbed copy per device under
+`metadata/`.
+
 ## Config
 
 See `assets/config-modality-blocks.yml`. One entry per stream under

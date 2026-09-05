@@ -208,7 +208,7 @@ claude-research → /plan → claude-dev → /tdd → implement → /verify → 
 | **r-package-development** | Dependencies, API design, testing |
 | **r-bayes** | brms, DAG validation, multilevel models, marginaleffects |
 | **tdd-workflow** | Test-driven development with testthat |
-| **pipeline-builder** | Step-by-step study pipeline builder on fearlabr: config proposed from the REDCap project and the MetricWire exports, timepoint declaration, EEG/ERP and sensor modality modules, `_pipeline.yml` build record, visual verification gate per stage |
+| **pipeline-builder** | Step-by-step study pipeline builder on fearlabr: config proposed from the REDCap project, the MetricWire exports, and the EEG and sensor files, timepoint declaration, EEG/ERP and sensor modality modules, `_pipeline.yml` build record, visual verification gate per stage |
 
 *Local-only (not in public repo):*
 

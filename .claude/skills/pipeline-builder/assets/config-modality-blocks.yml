@@ -52,6 +52,15 @@ eeg:
     min_trials: 6                           # per participant x session; below this flags low_trials
     amplitude_range_uv: [-50, 50]           # values outside flag amplitude_oob
     required_channels: [FCz, Cz]            # absent channel flags missing_channels
+  recording:                                # from .vhdr / *_eeg.json via derive_modality_config.R;
+    sampling_rate_hz: 500                   # read by the methods section and the reporting review,
+    n_channels: 32                          # never computed on. One source of truth.
+    reference: "common (unnamed in header)"
+    unit: "µV"
+    hardware_filters: {low_cutoff_s: 10, high_cutoff_hz: 1000, notch_hz: "Off"}
+    amplifier: "BrainAmp DC amplifier"
+    powerline_hz: 60
+    source: "BrainVision header sub-001_ses-01_task-flanker_eeg.vhdr"
 
 # ── Passive sensors / actigraphy (optional) ─────────────────────────────
 # One entry per stream. Day grain: one row per participant-day in the export.
@@ -69,6 +78,11 @@ sensors:
       valid_day_rule: "wear_minutes >= 600" # the study's rule, printed in 02s (REQUIRED)
       id_transform: {pad_width: 4}
       id_pattern: "^[0-9]{4}$"
+      device:                               # from the vendor preamble via derive_modality_config.R
+        vendor: ActiGraph
+        serials: [MOS2D0001, MOS2D0002]
+        epoch_seconds: 60
+        software: "Data File Created By ActiGraph wGT3X-BT ActiLife v6.13.4"
     sleep:
       label: "Sleep summary"
       file_glob: "sensor/*_sleep.csv"

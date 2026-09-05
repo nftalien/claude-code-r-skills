@@ -140,7 +140,25 @@ free-text fields, safety candidates, and which account field holds the
 participant ID. Gates, the battery map and safety thresholds are always
 asked. `references/builder-interview.md` section 1b walks those rows.
 
-Both scripts write `_config.proposed.yml` and `metadata/config_todo.csv`
+For EEG and sensors there is no metadata system; the files are the
+metadata. Once the exports are in `data/raw/eeg/` and `data/raw/sensor/`:
+
+```
+Rscript scripts/derive_modality_config.R --eeg-export 'data/raw/eeg/*_features.csv' \
+    --vhdr 'data/raw/eeg/*.vhdr' --vmrk 'data/raw/eeg/*.vmrk' --eeg-json 'data/raw/eeg/*_eeg.json'
+```
+
+It proposes the `eeg` block (column crosswalk, id transform, session map
+against the declared timepoints, feature candidates, QC thresholds from the
+distributions marked default, and `eeg.recording` from the BrainVision
+header and BIDS sidecar for the methods section) and the `sensors` block
+(one stream per export shape with grain, columns, metrics, aggregation, a
+valid-day rule with the fraction of days it keeps, and the device block
+from the vendor preamble). The measurement window, which timepoints expect
+each modality, and the time zone are asked. Sections 3 and 4 of
+`references/builder-interview.md` walk those rows.
+
+All three scripts write `_config.proposed.yml` and `metadata/config_todo.csv`
 and never touch `_config.yml`. Walk the todo table with the person, in this order:
 `ask` rows (anchor date field, non-REDCap modalities per timepoint,
 reverse-coded items, whether a detected form is a scored instrument, arms
@@ -276,7 +294,8 @@ render prints, days assigned to timepoints by anchor and window.
 
 **REDCap and EMA**: engine unchanged from fearlabr-pipeline; both config
 blocks are now proposed from the source systems (`R/redcap_project_config.R`,
-`R/metricwire_project_config.R`) and confirmed. The builder adds the
+`R/metricwire_project_config.R`) and confirmed. The EEG and sensor blocks are
+proposed from the files (`R/eeg_project_config.R`, `R/sensor_project_config.R`). The builder adds the
 timepoint completeness table to 03 and the compliance heatmap to 05 (both
 from `R/quicklook.R`), and the gate and record chunks to every notebook.
 
@@ -324,6 +343,10 @@ that only works from a chat.
   data, codebook and choicesDataCoding export.
 - `assets/example-metricwire-metadata/`: two analysis exports, a parsed
   codebook and a coding file, fictional, in the shapes the derivation reads.
+- `scripts/derive_modality_config.R`: add the `eeg` and `sensors` blocks from
+  the exports, BrainVision headers, BIDS sidecars and vendor preambles.
+- `assets/example-eeg-metadata/`, `assets/example-sensor-metadata/`: the
+  file shapes the modality derivation reads, fictional.
 - `assets/example-redcap-metadata/`: the three export files, fictional, as the
   derivation expects them.
 - `scripts/proof_modalities.R`: synthetic proof of everything this skill adds.
