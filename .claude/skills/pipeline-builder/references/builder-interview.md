@@ -69,10 +69,49 @@ Write the confirmed proposal into `_config.yml`, run
 `assert_timepoints_declared()`, and correct the dictionary at the source
 wherever the person's answer showed it wrong.
 
+## 1b. MetricWire EMA (if on): read, then walk
+
+Run `scripts/derive_ema_config.R` with each session's codebook (and the
+choicesDataCoding export when the study has one). API when the keyring holds
+the client credentials and `metricwire.sessions[*].analysis_id` is set;
+otherwise `--data key=path` per session. The analysis ids come from the
+MetricWire analysis page and are typed once.
+
+What it derives: sessions and whether each export carries Missed rows (an
+analysis without them reads 100% compliance; fix the analysis definition at
+source, then re-pull); every question column with its codebook text and a
+proposed canonical name (the battery choice word, else the first content
+words); declared range from `choicesDataCoding`, else the codebook, beside
+the observed range; which survey names carry which items; free-text items;
+items whose wording suggests a safety item; which account field holds the
+participant ID and the observed ID range.
+
+The `ask` rows for EMA:
+
+- **A session with no Missed rows.** Not a config question; the analysis in
+  MetricWire has to include Missed response types. Nothing downstream is
+  right until it does.
+- **A declared range the data contradicts** (coding 1-5, data 0-4). The
+  momentary scale is usually zero-based even when the panel version is not.
+  Fix the range; never proceed with NAs.
+- **Gates.** An item shown only when another fired (`affect >=
+  eligibility_cutoff`, `past_stress_event == 1`). From the survey logic in
+  MetricWire; the codebook does not carry it.
+- **Safety thresholds.** `safety_min` per candidate item, from the
+  protocol. A candidate is found by wording; the threshold never is.
+- **Battery map.** Which battery each session is and the evidence (UFOs:
+  verified against randomization for 83 of 83). Not in MetricWire.
+- **Arm per session** when only one condition receives a battery.
+- **Canonical names.** Rename any proposed slug; the raw column and quest
+  code travel with it so 04's crosswalk is generated from the config.
+- **ID resolver** when more than one account field matches the pattern.
+  UFOs needed a coalesce across first name, last name and user id; the
+  proposal lists every matching field.
+
 ## 2. Modalities present
 
-Prompt: which of MetricWire EMA, EEG/ERP, passive sensor or actigraphy are
-present. Multi-select. REDCap is already on. For anything else the person
+Prompt: which of EEG/ERP, passive sensor or actigraphy are present (EMA was
+handled in 1b). Multi-select. REDCap is already on. For anything else the person
 names that is not one of these ("fMRI", "EMG startle", "voice"), say the
 builder does not have a module for it yet, offer to keep it as a per-study
 `R/` helper with its own stage after 07m, and note it for Mode E. Then add

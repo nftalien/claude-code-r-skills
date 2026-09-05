@@ -1,0 +1,6 @@
+questionId,choicesDataCoding
+quest_101,"{""Not at all"":0,""A little"":1,""Somewhat"":2,""Very"":3,""Extremely"":4}"
+quest_102,"{""Not at all"":0,""A little"":1,""Somewhat"":2,""Very"":3,""Extremely"":4}"
+quest_103,"{""Not at all"":0,""A little"":1,""Somewhat"":2,""Very"":3,""Extremely"":4}"
+quest_110,No=0;Yes=1
+quest_120,"{""Not at all"":1,""A little"":2,""Somewhat"":3,""Very"":4,""Very much"":5}"

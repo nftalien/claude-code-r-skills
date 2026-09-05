@@ -37,6 +37,14 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   identifiers, structural skips) with a todo table marking every value
   derived, inferred, defaulted or to ask; `redcap_config_report()`,
   `write_proposed_config()` (never overwrites `_config.yml`).
+* `R/metricwire_project_config.R`: propose the `metricwire` block from the
+  analysis data (API pull or cached export), the codebook (PDF or parsed
+  CSV) and the choicesDataCoding export. `metricwire_project_read()`,
+  `metricwire_project_to_config()` (sessions with the Missed-rows check,
+  items with codebook names and declared-versus-observed ranges, prompt
+  blocks by survey name, free text, safety candidates, the account field
+  holding the participant ID), `metricwire_config_report()`,
+  `merge_proposals()`; `metricwire_list_studies()` for GET /studies.
 * `R/quicklook.R`: `summarise_render_log()`, `modality_coverage_dashboard()`
   / `plot_coverage_dashboard()`, `plot_ema_compliance_heatmap()`.
 * `R/synthetic_modalities.R`: `generate_synthetic_eeg()`,
@@ -45,7 +53,7 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   config declares, at the paths the ingest globs read.
 * Tests: `test-timepoints.R`, `test-eeg.R`, `test-sensor.R`,
   `test-manifest.R`, `test-quicklook.R`, `test-synthetic-modalities.R`,
-  `test-redcap-project-config.R`
+  `test-redcap-project-config.R`, `test-metricwire-project-config.R`
   (helper `helper-builder-config.R`).
 * `ggplot2` stays in Suggests; every plot function returns its table with a
   message when ggplot2 is absent.

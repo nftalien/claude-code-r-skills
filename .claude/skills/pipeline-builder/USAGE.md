@@ -45,6 +45,21 @@ reverse-coded items, whether a form is really a scored instrument). Claude
 walks that table with you; where a question has a fixed set of answers you
 get buttons.
 
+If the study has MetricWire EMA, a second command does the same for it:
+
+```
+Rscript scripts/derive_ema_config.R --codebook period_1=metadata/period_1_codebook.pdf
+```
+
+It reads each session's data (pulled with your MetricWire credentials, or
+the cached export), the codebook, and the choicesDataCoding export if you
+have one, and adds the EMA block: sessions, items with names and ranges,
+which prompts carry which items, free-text fields, safety candidates, and
+which account field holds the participant ID. It flags an analysis exported
+without Missed rows and a declared range the data contradicts, the two
+things that cost the most time on the first real study. You still declare
+gates, safety thresholds and the battery map.
+
 **2. Drop the files in.** Claude tells you which files go where
 (`data/raw/`, `data/raw/eeg/`, `data/raw/sensor/`). When a file lands, paste
 its first lines or its column names; Claude writes the column crosswalk into
