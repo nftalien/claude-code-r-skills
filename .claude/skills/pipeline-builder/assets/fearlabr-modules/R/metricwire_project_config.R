@@ -113,6 +113,23 @@ mw_parse_coding <- function(x) {
   dplyr::bind_rows(out)
 }
 
+#' Read MetricWire "Data Import" templates: header-only CSVs, one per survey.
+#'
+#' The dashboard's Data Import page exports the column schema of a survey
+#' (userId plus one quest_<base>_<version> column per question). With no
+#' data pulled yet, these say which columns exist and which survey carries
+#' which item, which is what the prompt-block proposal needs.
+#'
+#' @param paths Named list survey label -> CSV path.
+#' @return Tibble survey, column.
+metricwire_read_import_templates <- function(paths) {
+  purrr::imap_dfr(paths, function(path, survey) {
+    stopifnot(file.exists(path))
+    cols <- names(readr::read_csv(path, n_max = 0, show_col_types = FALSE, name_repair = "minimal"))
+    tibble::tibble(survey = survey, column = cols[!mw_snake(cols) %in% c("user_id", "userid")])
+  })
+}
+
 #' Read a choicesDataCoding export: one row per item with its coding.
 #'
 #' @return Tibble quest_code, label, code (long).
@@ -173,7 +190,11 @@ metricwire_list_studies <- function(config, token = NULL, .get = mw_api_get) {
 #' @param .pull,.get Transports, for tests.
 metricwire_project_read <- function(config = NULL, data = NULL, codebooks = NULL, coding = NULL,
                                     definitions = NULL, studies = NULL, fetch_studies = TRUE,
+                                    import_templates = NULL,
                                     .pull = pull_metricwire_analysis, .get = mw_api_get) {
+  templates <- if (!is.null(import_templates)) metricwire_read_import_templates(import_templates) else NULL
+  if (!is.null(templates)) cat("• import templates: ", dplyr::n_distinct(templates$survey), " survey(s), ",
+                               nrow(templates), " column(s)\n", sep = "")
   sessions <- config$metricwire$sessions %||% list()
   keys <- unique(c(names(data), names(sessions)))
   if (!length(keys)) stop("[metricwire_project_read] no sessions: give `data` or configure metricwire.sessions.", call. = FALSE)
@@ -202,7 +223,8 @@ metricwire_project_read <- function(config = NULL, data = NULL, codebooks = NULL
         cb_path <- if (fs::is_absolute_path(cb_path) || file.exists(cb_path)) cb_path else here::here(cb_path)
         if (file.exists(cb_path)) {
           cb0 <- metricwire_read_codebook(cb_path)
-          df <- tibble::as_tibble(stats::setNames(replicate(length(cb0$quest_code), character(0), simplify = FALSE), cb0$quest_code))
+          cols0 <- if (!is.null(templates) && nrow(templates)) unique(c(templates$column)) else cb0$quest_code
+          df <- tibble::as_tibble(stats::setNames(replicate(length(cols0), character(0), simplify = FALSE), cols0))
           how <- "codebook only (no data)"
           cat("⚠️ ", k, ": no data; carried from the codebook alone (", nrow(cb0), " items)\n", sep = "")
         }
@@ -244,7 +266,7 @@ metricwire_project_read <- function(config = NULL, data = NULL, codebooks = NULL
                         error = function(e) { cat("⚠️ studies list unavailable: ", conditionMessage(e), "\n", sep = ""); NULL })
   }
   list(source = source, sessions = dplyr::bind_rows(session_tbl), data = frames, codebooks = cbs,
-       coding = cods, studies = studies, read_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
+       coding = cods, studies = studies, templates = templates, read_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
 }
 
 # ── Derivation ─────────────────────────────────────────────────────────
@@ -403,7 +425,7 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
                   observed_hi = ifelse(is.finite(.data$observed_hi), .data$observed_hi, NA_real_))
   items_u$name[is.na(items_u$name)] <- items_u$quest_code[is.na(items_u$name)]
   items_u$name <- make.unique(slug(items_u$name), sep = "_")
-  no_cb <- items_u$quest_code[is.na(items_u$item_text)]
+  no_cb <- items_u$name[is.na(items_u$item_text)]
   if (length(no_cb)) note("metricwire", "ema_items.names", "ask", paste0(length(no_cb), " column(s) have no codebook entry and keep their column name: ", paste(utils::head(no_cb, 8), collapse = ", ")))
 
   # 3. Prompt blocks (lesson C3): which survey carries which item
@@ -428,6 +450,20 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
       }
       blocks[[k]][[slug(sv)]] <- as.list(unique(its))
     }
+  }
+  if (!length(blocks) && !is.null(project$templates) && nrow(project$templates)) {
+    # No data yet: survey membership from the Data Import templates.
+    tp <- project$templates
+    tp$quest_code <- mw_column_to_code(tp$column, items_u$quest_code)
+    for (sv in unique(tp$survey)) {
+      its <- items_u$name[match(unique(stats::na.omit(tp$quest_code[tp$survey == sv])), items_u$quest_code)]
+      its <- its[!is.na(its) & !its %in% items_u$name[items_u$free_text]]
+      for (k in keys) blocks[[k]][[slug(sv)]] <- as.list(its)
+      for (qc in unique(stats::na.omit(tp$quest_code[tp$survey == sv]))) carried[[qc]] <- unique(c(carried[[qc]], sv))
+    }
+    unmatched_cols <- tp$column[is.na(tp$quest_code)]
+    note("metricwire", "prompt_blocks", "inferred", paste0("from the Data Import templates (no data yet): ", dplyr::n_distinct(tp$survey), " survey(s); ",
+                                                          if (length(unmatched_cols)) paste0(length(unmatched_cols), " template column(s) have no codebook entry: ", paste(utils::head(unmatched_cols, 10), collapse = ", ")) else "every template column matched a codebook item"))
   }
   n_surveys <- length(unique(unlist(lapply(blocks, names))))
   if (n_surveys > 1) note("metricwire", "prompt_blocks", "inferred", paste0(n_surveys, " survey name(s); an item is carried by a survey when >= ", 100 * block_threshold, "% of its submissions answer it. Confirm with the PI which prompts carry which blocks"))

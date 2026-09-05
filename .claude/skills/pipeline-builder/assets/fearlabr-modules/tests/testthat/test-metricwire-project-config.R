@@ -219,3 +219,27 @@ test_that("a session with a codebook but no data is carried codebook-only", {
   expect_false("section_header" %in% vapply(prop2$config$metricwire$ema_items, function(i) i$name, character(1)))
   expect_true(any(prop2$todo$key == "ema_items.information"))
 })
+
+
+test_that("Data Import templates give prompt blocks when there is no data yet", {
+  d <- mw_fixture()
+  writeLines("userId,quest_101_555,quest_102_555,quest_120_555,quest_130_555", file.path(d, "Morning_Import.csv"))
+  writeLines("userId,quest_101_777,quest_102_777,quest_140_777,quest_999_777", file.path(d, "Evening_Import.csv"))
+  expect_output(p <- metricwire_project_read(
+    config = list(metricwire = list(sessions = list(period_1 = list(analysis_id = "a1")))),
+    codebooks = list(period_1 = file.path(d, "codebook_items.csv")),
+    import_templates = list(`Morning Battery` = file.path(d, "Morning_Import.csv"), `Evening Battery` = file.path(d, "Evening_Import.csv"))),
+    "import templates: 2 survey")
+  expect_equal(nrow(p$templates), 8)
+  prop <- metricwire_project_to_config(p, id_pattern = "^[0-9]{4}$")
+  mw <- prop$config$metricwire
+  expect_setequal(unlist(mw$prompt_blocks$period_1$morning_battery), c("afraid", "nervous", "able_resist_temptation_morning"))
+  # an unmatched template column is a real question column: it becomes an item under its column name
+  expect_setequal(unlist(mw$prompt_blocks$period_1$evening_battery), c("afraid", "nervous", "thoughts_hurting_yourself", "quest_999_777"))
+  nm <- vapply(mw$ema_items, function(i) i$name, character(1))
+  expect_equal(unlist(mw$ema_items[[which(nm == "afraid")]]$prompts), c("Morning Battery", "Evening Battery"))
+  expect_equal(unlist(mw$ema_items[[which(nm == "able_resist_temptation_morning")]]$prompts), "Morning Battery")
+  # the unknown column is flagged once, under ema_items.names; the block note then reports a full match
+  expect_true(any(prop$todo$key == "ema_items.names" & grepl("quest_999_777", prop$todo$note)))
+  expect_true(any(prop$todo$key == "prompt_blocks" & grepl("every template column matched", prop$todo$note)))
+})
