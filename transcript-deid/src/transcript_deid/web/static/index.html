@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>transcript-deid review</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1b1b1b; --muted:#6b6b6b; --panel:#fff; --line:#e3e1dc; --accent:#2f5d8a;
+    --c-PARTICIPANT:#c7e6c9; --c-NAME:#ffe0b2; --c-DATE:#d7ccf5; --c-AGE:#d7ccf5; --c-PHONE:#f8c9c9; --c-EMAIL:#f8c9c9;
+    --c-ADDRESS:#f8c9c9; --c-ZIP:#f8c9c9; --c-LOCATION:#cfe4f7; --c-ORGANIZATION:#cfe4f7; --c-SSN:#f8c9c9; --c-MRN:#f8c9c9;
+    --c-URL:#f8c9c9; --c-ID_NUMBER:#f8c9c9; --c-GARBLED:#e6e6e6; --c-INDIRECT:#fff5b8; }
+  * { box-sizing:border-box }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; gap:16px; align-items:center; padding:8px 16px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:5 }
+  header h1 { font-size:15px; margin:0; font-weight:600 }
+  header .spacer { flex:1 }
+  button { font:inherit; padding:4px 10px; border:1px solid var(--line); background:#fff; border-radius:6px; cursor:pointer }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent) }
+  button:disabled { opacity:.5; cursor:default }
+  #layout { display:grid; grid-template-columns:260px 1fr 340px; height:calc(100vh - 45px) }
+  #files, #detail { border-right:1px solid var(--line); overflow:auto; background:var(--panel) }
+  #detail { border-right:none; border-left:1px solid var(--line) }
+  #files a { display:block; padding:8px 12px; border-bottom:1px solid var(--line); color:inherit; text-decoration:none }
+  #files a.active { background:#eef3f8 }
+  #files .meta { color:var(--muted); font-size:12px }
+  #main { overflow:auto; padding:12px 20px }
+  .seg { display:grid; grid-template-columns:90px 1fr; gap:10px; padding:6px 0; border-bottom:1px dotted var(--line) }
+  .seg .ts { color:var(--muted); font-size:12px; padding-top:2px; font-variant-numeric:tabular-nums }
+  .seg .spk { font-weight:600; margin-right:6px }
+  .seg .txt { white-space:pre-wrap }
+  .seg .out { color:var(--muted); font-size:12.5px; margin-top:3px; white-space:pre-wrap }
+  mark { padding:0 2px; border-radius:3px; cursor:pointer; border-bottom:2px solid transparent }
+  mark.reject { text-decoration:line-through; opacity:.6 }
+  mark.pending { border-bottom-color:#d9822b }
+  mark.sel { outline:2px solid var(--accent) }
+  .legend { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 12px }
+  .legend label { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; font-size:12px; border:1px solid var(--line); cursor:pointer }
+  .legend input { margin:0 }
+  #detail { padding:12px }
+  #detail h2 { font-size:14px; margin:0 0 8px }
+  #detail dl { display:grid; grid-template-columns:90px 1fr; gap:4px 8px; margin:0 0 10px; font-size:13px }
+  #detail dt { color:var(--muted) }
+  #detail input, #detail select { font:inherit; width:100%; padding:4px 6px; border:1px solid var(--line); border-radius:4px }
+  .row { display:flex; gap:6px; margin:6px 0; flex-wrap:wrap }
+  .hint { color:var(--muted); font-size:12px }
+  #toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:8px 14px; border-radius:6px; display:none; z-index:9 }
+  .bad { color:#b3261e }
+</style>
+</head>
+<body>
+<header>
+  <h1>transcript-deid review</h1>
+  <span id="fileTitle" class="hint"></span>
+  <span class="spacer"></span>
+  <button id="acceptHigh" title="Accept every pending flag with confidence ≥ 0.8">Accept ≥0.8</button>
+  <button id="acceptAll" title="Accept every pending flag">Accept all pending</button>
+  <button id="rerun" title="Re-run detection with the current roster, keeping your decisions">Re-run</button>
+  <button id="export" class="primary">Export</button>
+</header>
+<div id="layout">
+  <nav id="files"></nav>
+  <section id="main"><p class="hint">Pick a transcript on the left.</p></section>
+  <aside id="detail"><p class="hint">Click a highlighted span to review it. Select text in a segment to add a flag.</p></aside>
+</div>
+<div id="toast"></div>
+<script>
+const TYPES = ["PARTICIPANT","NAME","DATE","AGE","PHONE","EMAIL","ADDRESS","ZIP","LOCATION","ORGANIZATION","SSN","MRN","URL","ID_NUMBER","GARBLED","INDIRECT"];
+const TAG = {NAME:"[NAME]",DATE:"[DATE]",AGE:"[AGE>89]",PHONE:"[PHONE]",EMAIL:"[EMAIL]",ADDRESS:"[ADDRESS]",ZIP:"[ZIP]",LOCATION:"[LOCATION]",ORGANIZATION:"[ORGANIZATION]",SSN:"[SSN]",MRN:"[MRN]",URL:"[URL]",ID_NUMBER:"[ID-NUMBER]"};
+let files = [], doc = null, current = null, hidden = new Set(), selFlag = null;
+
+const $ = s => document.querySelector(s);
+const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function toast(msg, bad){ const t=$("#toast"); t.textContent=msg; t.style.background=bad?"#b3261e":"#333"; t.style.display="block"; setTimeout(()=>t.style.display="none", 2500); }
+async function api(path, opts){ const r = await fetch(path, opts); const j = await r.json().catch(()=>({})); if(!r.ok && r.status!==409) throw new Error(j.detail||r.statusText); return {status:r.status, body:j}; }
+const post = (path, body) => api(path, {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body||{})});
+
+async function loadFiles(){
+  files = (await api("/api/files")).body;
+  const nav = $("#files"); nav.innerHTML = "";
+  for(const f of files){
+    const a = document.createElement("a"); a.href="#"+f.id; a.className = f.id===current?"active":"";
+    a.innerHTML = `<div>${esc(f.file)}</div><div class="meta">${f.flags} flags · <b>${f.pending} pending</b>${f.exported?" · exported":""}</div>`;
+    a.onclick = e => { e.preventDefault(); open(f.id); };
+    nav.appendChild(a);
+  }
+}
+async function open(id){
+  current = id; selFlag = null;
+  doc = (await api("/api/file/"+encodeURIComponent(id))).body;
+  $("#fileTitle").textContent = doc.source + (doc.meta.model? "  ·  "+doc.meta.model : "  ·  no NLP model");
+  renderLegend(); renderDoc(); renderDetail(); loadFiles();
+}
+function renderLegend(){
+  const counts = {}; for(const f of doc.flags) counts[f.type]=(counts[f.type]||0)+1;
+  const div = document.createElement("div"); div.className="legend";
+  for(const t of TYPES){ if(!counts[t]) continue;
+    div.innerHTML += `<label style="background:var(--c-${t})"><input type="checkbox" data-t="${t}" ${hidden.has(t)?"":"checked"}> ${t} ${counts[t]}</label>`; }
+  div.querySelectorAll("input").forEach(i => i.onchange = () => { i.checked? hidden.delete(i.dataset.t) : hidden.add(i.dataset.t); renderDoc(); });
+  $("#main").innerHTML=""; $("#main").appendChild(div);
+}
+function highlight(text, flags, segIndex, field){
+  flags = flags.filter(f => !hidden.has(f.type)).sort((a,b)=>a.start-b.start);
+  let out = "", pos = 0;
+  for(const f of flags){ if(f.start < pos) continue;
+    out += esc(text.slice(pos, f.start));
+    out += `<mark class="${f.decision}${selFlag&&selFlag.id===f.id?" sel":""}" style="background:var(--c-${f.type})" data-id="${f.id}" title="${f.type} ${f.confidence}${f.note?" · "+esc(f.note):""}">${esc(text.slice(f.start,f.end))}</mark>`;
+    pos = f.end; }
+  return out + esc(text.slice(pos));
+}
+function renderDoc(){
+  const main = $("#main");
+  main.querySelectorAll(".seg").forEach(e=>e.remove());
+  const bySeg = {}; for(const f of doc.flags){ (bySeg[f.segment+"|"+f.field] ||= []).push(f); }
+  doc.segments.forEach((s,i)=>{
+    if(!s.text.trim() && !s.speaker) return;
+    const d = document.createElement("div"); d.className="seg"; d.dataset.seg=i;
+    const spk = s.speaker!=null ? `<span class="spk" data-field="speaker">${highlight(s.speaker, bySeg[i+"|speaker"]||[], i, "speaker")}:</span>` : "";
+    const r = doc.rendered[i];
+    const outLine = (r.speaker!=null? r.speaker+": ":"") + r.text;
+    d.innerHTML = `<div class="ts">${s.start||("¶"+(i+1))}</div><div><div class="txt">${spk}<span data-field="text">${highlight(s.text, bySeg[i+"|text"]||[], i, "text")}</span></div><div class="out">→ ${esc(outLine)}</div></div>`;
+    main.appendChild(d);
+  });
+  main.querySelectorAll("mark").forEach(m => m.onclick = e => { e.stopPropagation(); selFlag = doc.flags.find(f=>f.id===m.dataset.id); renderDoc(); renderDetail(); });
+  main.onmouseup = onSelect;
+}
+function onSelect(){
+  const sel = window.getSelection(); if(!sel || sel.isCollapsed) return;
+  const range = sel.getRangeAt(0);
+  const span = range.startContainer.parentElement.closest("[data-field]"); if(!span) return;
+  const seg = span.closest(".seg"); if(!seg) return;
+  // char offset of selection within the span's text content
+  const pre = range.cloneRange(); pre.selectNodeContents(span); pre.setEnd(range.startContainer, range.startOffset);
+  const start = pre.toString().length, text = sel.toString();
+  if(!text.trim()) return;
+  renderManual(+seg.dataset.seg, span.dataset.field, start, start+text.length, text);
+}
+function renderManual(seg, field, start, end, text){
+  selFlag = null;
+  $("#detail").innerHTML = `<h2>Add flag</h2><dl><dt>Text</dt><dd>${esc(text)}</dd><dt>Type</dt><dd><select id="mType">${TYPES.filter(t=>t!=="INDIRECT").map(t=>`<option ${t==="NAME"?"selected":""}>${t}</option>`).join("")}</select></dd>
+    <dt>Replace</dt><dd><input id="mRep" value="[NAME]"></dd></dl><div class="row"><button class="primary" id="mAdd">Add</button></div>`;
+  const sel=$("#mType"), rep=$("#mRep");
+  sel.onchange = () => { rep.value = sel.value==="GARBLED"? `[GARBLED: ${text}]` : sel.value==="PARTICIPANT"? (doc.roster_ids[0]||"") : sel.value==="NAME"? "[NAME]" : (TAG[sel.value]||"["+sel.value+"]"); };
+  rep.title = "For NAME, leave [NAME] to get the next free [NAME-n] tag.";
+  sel.onchange();
+  $("#mAdd").onclick = async () => { await post(`/api/file/${current}/manual`, {segment:seg, field, start, end, type:sel.value, replacement:rep.value}); toast("flag added"); open(current); };
+}
+function renderDetail(){
+  const d = $("#detail"); const f = selFlag;
+  if(!f){ d.innerHTML = `<p class="hint">Click a highlighted span to review it. Select text in a segment to add a flag.</p>
+    <p class="hint">Keys while a flag is selected: <b>a</b> accept · <b>r</b> reject · <b>n</b> next pending</p>`; return; }
+  d.innerHTML = `<h2>${f.type} <span class="hint">${f.confidence} · ${f.source}</span></h2>
+    <dl><dt>Text</dt><dd>${esc(f.text)}</dd><dt>Note</dt><dd>${esc(f.note||"—")}</dd>
+    <dt>Type</dt><dd><select id="fType">${TYPES.map(t=>`<option ${t===f.type?"selected":""}>${t}</option>`).join("")}</select></dd>
+    <dt>Replace</dt><dd><input id="fRep" value="${esc(f.replacement)}"></dd></dl>
+    <div class="row"><button class="primary" data-d="accept">Accept (a)</button><button data-d="reject">Reject (r)</button><button data-d="pending">Pending</button></div>
+    ${f.type==="NAME"||f.type==="PARTICIPANT"? `<hr><p class="hint">Map this name to a participant. Adds it as an alias in the roster; re-run to apply everywhere.</p>
+    <div class="row"><select id="aliasId">${doc.roster_ids.map(i=>`<option>${i}</option>`).join("")}<option value="__new">new study ID…</option></select><input id="newId" placeholder="study ID" style="display:none"><button id="aliasBtn">Add alias</button></div>`:""}
+    <hr><p class="hint">Same text elsewhere in this transcript: <b>${doc.flags.filter(x=>x.text.toLowerCase()===f.text.toLowerCase()).length}</b>
+    <button id="applySame">apply decision to all</button></p>`;
+  d.querySelectorAll("button[data-d]").forEach(b => b.onclick = () => decide(f, b.dataset.d));
+  $("#fType").onchange = () => { const t=$("#fType").value; $("#fRep").value = t==="GARBLED"? `[GARBLED: ${f.text}]` : (TAG[t]||f.replacement); };
+  const aid = $("#aliasId"); if(aid){ aid.onchange = () => $("#newId").style.display = aid.value==="__new"?"":"none";
+    $("#aliasBtn").onclick = async () => { const id = aid.value==="__new"? $("#newId").value.trim() : aid.value; if(!id) return;
+      await post("/api/roster/alias", {study_id:id, alias:f.text}); await decide(f, "accept", id, "PARTICIPANT"); toast(`alias added to ${id}; re-run to apply everywhere`); }; }
+  $("#applySame").onclick = async () => { const same = doc.flags.filter(x=>x.text.toLowerCase()===f.text.toLowerCase());
+    for(const x of same){ await post(`/api/file/${current}/flag/${x.id}`, {decision:f.decision, replacement:$("#fRep").value, type:$("#fType").value}); } toast("applied"); open(current); };
+}
+async function decide(f, decision, replacement, type){
+  replacement = replacement ?? $("#fRep")?.value ?? f.replacement; type = type ?? $("#fType")?.value ?? f.type;
+  await post(`/api/file/${current}/flag/${f.id}`, {decision, replacement, type});
+  f.decision = decision; f.replacement = replacement; f.type = type;
+  const fresh = (await api("/api/file/"+encodeURIComponent(current))).body; doc.rendered = fresh.rendered; doc.flags = fresh.flags;
+  selFlag = doc.flags.find(x=>x.id===f.id); renderDoc(); renderDetail(); loadFiles();
+}
+function nextPending(){
+  const sorted = doc.flags.filter(f=>f.decision==="pending").sort((a,b)=>a.segment-b.segment||a.start-b.start);
+  if(!sorted.length){ toast("nothing pending"); return; }
+  let i = selFlag? sorted.findIndex(f=>f.segment>selFlag.segment||(f.segment===selFlag.segment&&f.start>selFlag.start)) : 0; if(i<0) i=0;
+  selFlag = sorted[i]; renderDoc(); renderDetail();
+  document.querySelector(`mark[data-id="${selFlag.id}"]`)?.scrollIntoView({block:"center"});
+}
+document.addEventListener("keydown", e => { if(!doc || e.target.tagName==="INPUT"||e.target.tagName==="SELECT") return;
+  if(e.key==="a"&&selFlag) decide(selFlag,"accept"); else if(e.key==="r"&&selFlag) decide(selFlag,"reject"); else if(e.key==="n") nextPending(); });
+$("#acceptAll").onclick = async () => { if(!doc) return; const ids = doc.flags.filter(f=>f.decision==="pending").map(f=>f.id); await post(`/api/file/${current}/bulk`, {flag_ids:ids, decision:"accept"}); toast(`${ids.length} accepted`); open(current); };
+$("#acceptHigh").onclick = async () => { if(!doc) return; const ids = doc.flags.filter(f=>f.decision==="pending"&&f.confidence>=0.8).map(f=>f.id); await post(`/api/file/${current}/bulk`, {flag_ids:ids, decision:"accept"}); toast(`${ids.length} accepted`); open(current); };
+$("#rerun").onclick = async () => { if(!doc) return; toast("re-running…"); await post(`/api/file/${current}/rerun`); open(current); };
+$("#export").onclick = async () => { if(!doc) return;
+  const pending = doc.flags.filter(f=>f.decision==="pending"&&f.type!=="INDIRECT").length;
+  if(pending && !confirm(`${pending} flags are still pending. Pending PHI flags are redacted anyway; continue?`)) return;
+  const r = await post(`/api/file/${current}/export`);
+  if(r.status===409){ $("#detail").innerHTML = `<h2 class="bad">Export refused</h2><p>Roster names still present in the output:</p><ul>${r.body.leaks.map(l=>`<li>segment ${l.segment+1} (${l.field}): <b>${esc(l.text)}</b> → ${l.study_id}</li>`).join("")}</ul><p class="hint">Reject/adjust the flags that hide them, or re-run.</p>`; toast("export refused: names remain", true); return; }
+  toast("exported "+r.body.path); loadFiles(); };
+loadFiles().then(()=>{ const id = location.hash.slice(1); if(id) open(decodeURIComponent(id)); });
+</script>
+</body>
+</html>
