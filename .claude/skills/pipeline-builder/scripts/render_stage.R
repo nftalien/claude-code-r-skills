@@ -19,6 +19,23 @@ id <- sub("\\.qmd$", "", basename(args[1]))
 qmd <- file.path("notebooks", paste0(id, ".qmd"))
 if (!file.exists(qmd)) stop(qmd, " not found. Stages live in notebooks/.")
 
+# The engine ships in pkg/ and is installed separately. A pull that brings a
+# newer tarball leaves the notebook calling functions the installed build does
+# not have, which fails deep inside a chunk with "could not find function".
+# Cheaper to say so here.
+tb <- file.path("pkg", "fearlabr_0.2.0.tar.gz")
+if (file.exists(tb)) {
+  desc <- system.file("DESCRIPTION", package = "fearlabr")
+  if (!nzchar(desc)) {
+    stop("fearlabr is not installed. Run:  Rscript scripts/install_deps.R")
+  }
+  if (file.mtime(tb) > file.mtime(desc)) {
+    stop("pkg/fearlabr_0.2.0.tar.gz is newer than the installed fearlabr.\n",
+         "  The notebooks may call functions this build does not have. Install it, then restart R:\n",
+         "    install.packages(\"pkg/fearlabr_0.2.0.tar.gz\", repos = NULL, type = \"source\")")
+  }
+}
+
 quarto <- Sys.which("quarto")
 if (!nzchar(quarto)) {
   # RStudio ships its own copy; use it when quarto is not on the PATH.
