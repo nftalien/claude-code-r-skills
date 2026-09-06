@@ -181,3 +181,25 @@ test_that("mw_column_to_code matches the export's lower-cased columns to the cod
   expect_equal(out[3], "quest_1720030660782_1744980522641")
   expect_true(is.na(out[4]))
 })
+
+test_that("a column whose values are all INFORMATION_QUESTION is an information screen, not an item", {
+  d <- tempfile("mwinfo_"); dir.create(d)
+  cb <- tibble::tibble(quest_code = c("quest_10", "quest_11"),
+                       item_text = c("Right now, how upset are you?", NA),
+                       question_type = c("LIKERT", NA), response_min = c(0, NA), response_max = c(4, NA),
+                       canonical_name = c("upset", NA))
+  readr::write_csv(cb, file.path(d, "cb.csv"), na = "")
+  dat <- tibble::tibble(response_type = rep("submitted", 4), user_id = c("1001", "1002", "1003", "1004"),
+                        quest_10 = c("0", "2", "4", "1"),
+                        quest_11 = rep("INFORMATION_QUESTION", 4),   # field-group screen
+                        quest_12 = c("3600", "7200", "10800", "0"))  # a real unnamed child
+  readr::write_csv(dat, file.path(d, "data.csv"))
+  p <- metricwire_project_read(config = list(metricwire = list(sessions = list(s1 = list(analysis_id = "a")))),
+                               data = list(s1 = file.path(d, "data.csv")), codebooks = list(s1 = file.path(d, "cb.csv")))
+  prop <- metricwire_project_to_config(p, id_pattern = "^[0-9]{4}$")
+  nm <- vapply(prop$config$metricwire$ema_items, function(i) i$name, character(1))
+  expect_true("upset" %in% nm)
+  expect_false("quest_11" %in% nm)                       # the screen is dropped
+  expect_true("quest_12" %in% nm)                        # the unnamed child is kept
+  expect_true(any(prop$todo$key == "ema_items.information" & grepl("quest_11", prop$todo$note)))
+})

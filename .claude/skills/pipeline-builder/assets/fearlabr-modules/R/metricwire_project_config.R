@@ -438,6 +438,12 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
       qtype <- if (!is.na(i)) toupper(cb$question_type[i] %||% NA) else NA_character_
       coding_rng <- if (!is.null(cod)) { cc <- cod$code[cod$quest_code == qcode]; if (length(cc)) range(cc, na.rm = TRUE) else NULL } else NULL
       cb_rng <- if (!is.na(i) && !is.na(cb$response_min[i]) && !is.na(cb$response_max[i])) c(cb$response_min[i], cb$response_max[i]) else NULL
+      # An information screen inside a field group is exported as a column
+      # whose every value is the literal string "INFORMATION_QUESTION". The
+      # codebook does not list field-group children at all, so this is the
+      # only way to tell a screen from a question that happens to be unnamed.
+      is_info_screen <- length(v) > 0 && all(toupper(v) == "INFORMATION_QUESTION")
+      if (is_info_screen) qtype <- "INFORMATION"
       item_rows[[length(item_rows) + 1]] <- tibble::tibble(
         session = k, column = col, quest_code = qcode,
         name = if (!is.na(i)) mw_item_name(cb, i) else col,
@@ -463,7 +469,9 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
   # columns in an export, and are flagged there under ema_items.names.
   info <- !is.na(items$question_type) & grepl("^INFORMATION|^FIELD_GROUP", items$question_type)
   if (any(info)) {
-    note("metricwire", "ema_items.information", "derived", paste0(sum(info), " information screen(s) / field-group header(s) dropped: ", paste(unique(items$name[info]), collapse = ", ")))
+    # An unnamed field-group screen has no slug yet, so name it by its column.
+    dropped <- ifelse(is.na(items$name[info]), items$column[info], items$name[info])
+    note("metricwire", "ema_items.information", "derived", paste0(sum(info), " information screen(s) / field-group header(s) dropped: ", paste(unique(dropped), collapse = ", ")))
     if (any(grepl("^FIELD_GROUP", items$question_type[info]))) note("metricwire", "ema_items.field_groups", "ask",
       paste0(sum(grepl("^FIELD_GROUP", items$question_type[info])), " field group(s) (", paste(unique(items$name[info & grepl("^FIELD_GROUP", items$question_type)]), collapse = ", "),
              "): their child questions are not listed in the codebook and arrive as unnamed columns on the first pull; name them then"))
