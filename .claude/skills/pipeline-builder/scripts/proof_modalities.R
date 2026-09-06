@@ -132,6 +132,24 @@ if (isTRUE(config$sensors$enabled)) {
   }
 } else cat("⏭ sensors.enabled is false; sensor stages skipped\n")
 
+# ── REDCap coverage (every study has it; the dashboard never has zero panels)
+run_stage("03  REDCap wave coverage", {
+  id_col <- config$redcap$id_column
+  ev_col <- intersect(c("redcap_event_name", "event"), names(redcap))[1]
+  if (is.na(ev_col)) stop("synthetic REDCap has no redcap_event_name column")
+  s <- timepoint_schedule(config)
+  waves <- redcap |>
+    mutate(study_id = as.character(.data[[id_col]]),
+           timepoint = s$timepoint[match(.data[[ev_col]], s$redcap_event)]) |>
+    filter(!is.na(.data$timepoint)) |>
+    distinct(.data$study_id, .data$timepoint)
+  cov <- timepoint_coverage_summary(timepoint_coverage(waves, "study_id", "timepoint", config, "redcap",
+                                                       expected_ids = roster$study_id))
+  dir.create(config$paths$validation, recursive = TRUE, showWarnings = FALSE)
+  readr::write_csv(cov, file.path(config$paths$validation, paste0(stem, "_coverage_redcap.csv")))
+  paste(cov$timepoint, paste0(cov$n_observed, "/", cov$n_expected), collapse = ", ")
+}, hint = "timepoints.schedule.*.redcap_event does not match the event names in the export")
+
 # ── Cross-modality dashboard ────────────────────────────────────────────
 run_stage("07m modality coverage dashboard", {
   files <- list.files(config$paths$validation, pattern = paste0("^", stem, "_coverage_.*\\.csv$"), full.names = TRUE)
