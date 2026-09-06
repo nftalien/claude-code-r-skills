@@ -251,6 +251,14 @@ Repeat until `next_stage(m)` is `NULL`:
      Add `library(dplyr)` and friends to the setup chunk.
    - **`embed-resources: true` is in the YAML**, so a render is one
      self-contained file that can be sent for review.
+   - **Every `config$...` the stage reads actually exists.** Grep the
+     generated stage for `config\$[a-z_]*\$[a-z_0-9]*` and check each one
+     against `_config.yml`; the derivation proposes what the source systems
+     know, which is not the same set the templates read. A missing key is
+     `NULL`, and `NULL * 100` is `numeric(0)`, so a threshold silently
+     becomes empty and every comparison against it returns `logical(0)` —
+     which surfaces much later as a recycling error naming an innocent
+     variable. `validation.max_missing_allowed` was the one that bit.
 3. **Render.** Terminal, not the R console:
    ```
    Rscript scripts/render_stage.R <id>
