@@ -240,8 +240,17 @@ Repeat until `next_stage(m)` is `NULL`:
    at the top (`builder_stage_gate("<id>")`) and one at the end
    (`builder_record_render("<id>")`). Modality stages (00b, 01e, 02e, 01s,
    02s, 07m) come from this skill's `assets/qmd-templates/`. Substitute
-   `{{STUDY_NAME}}`, write to `notebooks/`, then
-   `mark_stage(m, id, "generated")` and save the manifest.
+   `{{STUDY_NAME}}` and every other `{{PLACEHOLDER}}`, write to `notebooks/`,
+   then `mark_stage(m, id, "generated")` and save the manifest.
+
+   Two things to check in every generated stage before handing it over, both
+   of which have failed a real render mid-chunk:
+   - **The setup chunk attaches what the body uses.** Several templates load
+     only `fearlabr`, which imports dplyr without attaching it, so a body
+     using dplyr verbs or `%>%` dies at whichever chunk reaches them first.
+     Add `library(dplyr)` and friends to the setup chunk.
+   - **`embed-resources: true` is in the YAML**, so a render is one
+     self-contained file that can be sent for review.
 3. **Render.** Terminal, not the R console:
    ```
    Rscript scripts/render_stage.R <id>
