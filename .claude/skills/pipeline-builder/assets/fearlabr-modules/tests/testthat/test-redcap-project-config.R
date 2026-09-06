@@ -206,3 +206,21 @@ test_that("yes/no-only and administrative forms are weak candidates, listed not 
   expect_true(any(inst$todo$key == "het_fidelity_checklist_session_1" & grepl("not proposed", inst$todo$note)))
   expect_true(any(inst$todo$key == "mental_health_history" & grepl("yes/no", inst$todo$note)))
 })
+
+test_that("scored_forms keeps a yes/no form the study declares scored", {
+  md <- tibble::tibble(
+    field_name = c("record_id", paste0("pc5_", 1:5), paste0("phq_", 1:3)),
+    form_name = c("ptsdpc5", rep("ptsdpc5", 5), rep("phq", 3)),
+    field_type = c("text", rep("yesno", 5), rep("radio", 3)),
+    field_label = field_name,
+    select_choices_or_calculations = c(NA, rep(NA, 5), rep("0, Not at all | 1, Several days | 2, More than half | 3, Nearly every day", 3)),
+    text_validation_type_or_show_slider_number = NA_character_, text_validation_min = NA_character_, text_validation_max = NA_character_,
+    identifier = NA_character_, branching_logic = NA_character_)
+  base <- redcap_derive_instruments(md, id_column = "record_id")
+  expect_false("ptsdpc5" %in% names(base$instruments))
+  expect_true(any(base$todo$key == "ptsdpc5" & grepl("not proposed", base$todo$note)))
+  kept <- redcap_derive_instruments(md, id_column = "record_id", scored_forms = "ptsdpc5")
+  expect_true("ptsdpc5" %in% names(kept$instruments))
+  expect_equal(kept$instruments$ptsdpc5$n_items, 5L); expect_equal(kept$instruments$ptsdpc5$item_range, c(0L, 1L))
+  expect_true(any(kept$todo$key == "ptsdpc5" & kept$todo$status == "derived" & grepl("scored_forms", kept$todo$note)))
+})

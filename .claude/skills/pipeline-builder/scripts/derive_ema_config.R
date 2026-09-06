@@ -23,6 +23,11 @@
 #       --id-pattern '^[0-9]{4}$'
 #
 # Repeat --data / --codebook / --coding once per session (key=path).
+# Before the first pull, add the dashboard's Data Import templates
+# (Survey > Data Import > download; header-only CSVs), one per survey:
+#       --template "Morning Battery=metadata/Morning_Battery_Data_Import.csv"
+# The codebook may be the real dashboard PDF (needs pdftools) or the
+# parsed items CSV.
 # ════════════════════════════════════════════════════════════════════════
 
 suppressPackageStartupMessages({ library(fearlabr) })
@@ -35,16 +40,23 @@ kv <- function(flag) {
 }
 one <- function(flag, default = NULL) { i <- which(args == flag); if (length(i)) args[i + 1] else default }
 
-config <- if (file.exists("_config.yml")) read_config("_config.yml") else NULL
+# --config path: a config to take the connection keys and sessions from when
+# the study has no _config.yml yet (workspace id, analysis ids, keyring keys)
+config <- if (!is.null(one("--config"))) read_config(one("--config")) else if (file.exists("_config.yml")) read_config("_config.yml") else NULL
 proposed_path <- "_config.proposed.yml"
 prior <- if (file.exists(proposed_path)) {
   list(config = yaml::read_yaml(proposed_path),
        todo = if (file.exists("metadata/config_todo.csv")) readr::read_csv("metadata/config_todo.csv", show_col_types = FALSE) else tibble::tibble(),
        source = "prior")
 } else NULL
-base_cfg <- config %||% prior$config
+base_cfg <- prior$config %||% list()
+# the connection facts (--config or _config.yml) win over a prior proposal's placeholders
+if (!is.null(config)) for (k in names(config)) {
+  base_cfg[[k]] <- if (is.list(base_cfg[[k]]) && is.list(config[[k]])) utils::modifyList(base_cfg[[k]], config[[k]]) else config[[k]]
+}
 
-project <- metricwire_project_read(config = base_cfg, data = kv("--data"), codebooks = kv("--codebook"), coding = kv("--coding"))
+project <- metricwire_project_read(config = base_cfg, data = kv("--data"), codebooks = kv("--codebook"), coding = kv("--coding"),
+                                   import_templates = kv("--template"))
 proposal <- metricwire_project_to_config(project, config = base_cfg, id_pattern = one("--id-pattern", "^[0-9]{3,6}$"))
 metricwire_config_report(proposal)
 

@@ -46,7 +46,8 @@ mw_admin_regex <- function() {
 #' every column that is not administrative.
 mw_question_columns <- function(df) {
   nm <- names(df)
-  q <- nm[grepl("^quest_[0-9]", nm)]
+  # quest_<id> columns, plus the dashboard's word-prefixed variables (AM_Loc_<id>)
+  q <- nm[grepl(paste0("^", mw_var_re, "$"), nm, perl = TRUE) & grepl("[0-9]{6,}", nm)]
   if (length(q)) return(q)
   nm[!grepl(mw_admin_regex(), nm) & !grepl("^\\.", nm)]
 }
@@ -76,18 +77,31 @@ metricwire_read_codebook <- function(path) {
                           show_col_types = FALSE, name_repair = "minimal")
     names(cb) <- mw_snake(names(cb))
     if (!"quest_code" %in% names(cb)) stop("[metricwire_read_codebook] ", basename(path), " has no quest_code column.", call. = FALSE)
+  } else if (is_pdf_file(path)) {
+    # A real dashboard PDF: layout parser, keeps study/survey/trigger attributes
+    cb <- parse_metricwire_codebook_pdf(path)
+    extra <- list(study = attr(cb, "study"), surveys = attr(cb, "surveys"), triggers = attr(cb, "triggers"))
+    if (nrow(cb)) cb <- group_codebook_items_into_scales(cb)
+    for (a in names(extra)) attr(cb, a) <- extra[[a]]
   } else {
     cb <- parse_metricwire_codebook(path)
     if (nrow(cb)) cb <- group_codebook_items_into_scales(cb)
   }
+  extra <- list(study = attr(cb, "study"), surveys = attr(cb, "surveys"), triggers = attr(cb, "triggers"))
   for (col in c("item_text", "item_stem", "item_choice", "question_type", "response_min",
-                "response_max", "survey_name", "effective_stem")) {
+                "response_max", "survey_name", "effective_stem", "display_condition", "question_group")) {
     if (!col %in% names(cb)) cb[[col]] <- NA_character_
   }
   cb$response_min <- suppressWarnings(as.numeric(cb$response_min))
   cb$response_max <- suppressWarnings(as.numeric(cb$response_max))
-  tibble::as_tibble(cb)
+  cb <- tibble::as_tibble(cb)
+  for (a in names(extra)) attr(cb, a) <- extra[[a]]
+  cb
 }
+
+#' The base code of a variable: the first id, which is the question; later
+#' ids are the survey copies MetricWire appends (quest_<q>_<survey>...).
+mw_base_code <- function(code) sub("^((?:quest|[A-Za-z]+_[A-Za-z]+)_[0-9]+).*$", "\\1", code)
 
 #' Parse one choicesDataCoding value into label/code pairs.
 #'
@@ -277,11 +291,21 @@ mw_stopwords <- function() c("how", "much", "do", "you", "feel", "right", "now",
                              "was", "were", "it", "having", "be", "about", "that", "with", "when",
                              "from", "my", "me", "on", "for", "and", "or")
 
+#' The name for codebook row i: a canonical_name column when the codebook
+#' carries one (the study's own vocabulary, kept across re-derivations),
+#' else the slug of the text.
+mw_item_name <- function(cb, i) {
+  cn <- if ("canonical_name" %in% names(cb)) cb$canonical_name[i] else NA_character_
+  if (!is.na(cn) && nzchar(trimws(cn))) return(slug(cn))
+  mw_item_slug(cb$item_text[i], cb$item_choice[i])
+}
+
 #' A canonical item name from codebook text: the choice word when the item
 #' is one of a battery ("Afraid"), else the first content words of the text.
 mw_item_slug <- function(item_text, item_choice = NA_character_, max_words = 4) {
   if (!is.na(item_choice) && nzchar(trimws(item_choice))) return(slug(item_choice))
   if (is.na(item_text) || !nzchar(trimws(item_text))) return(NA_character_)
+  item_text <- gsub("[\u2019']", "", item_text)          # I'm -> im, can't -> cant
   w <- strsplit(tolower(gsub("[^A-Za-z0-9 ]+", " ", item_text)), "\\s+")[[1]]
   w <- w[nzchar(w) & !w %in% mw_stopwords()]
   if (!length(w)) return(slug(item_text))
@@ -303,10 +327,31 @@ mw_column_to_code <- function(columns, quest_codes) {
     pre <- codes[startsWith(col, paste0(codes, "_"))]
     if (length(pre)) { out[j] <- pre[1]; next }
     d <- sub("^quest_", "", codes)
-    tail_hit <- codes[nzchar(d) & grepl(paste0("(^|[^0-9])", d, "$"), col)]
+    hit <- nzchar(d) & vapply(d, function(dd) grepl(paste0("(^|[^0-9])", dd, "$"), col), logical(1))
+    tail_hit <- codes[hit]
     if (length(tail_hit) == 1) out[j] <- tail_hit
   }
   out
+}
+
+#' Resolve "If <question text> IS <value>" display conditions to item gates.
+#'
+#' Returns a list (one per row of items_u): NULL when the item has no
+#' condition, list(item, equals) when the parent question was found by its
+#' text, or the raw condition string when it was not.
+mw_resolve_gates <- function(items_u) {
+  norm <- function(x) tolower(gsub("[^a-z0-9 ]", "", gsub("\\s+", " ", tolower(x %||% ""))))
+  texts <- norm(items_u$item_text)
+  lapply(seq_len(nrow(items_u)), function(j) {
+    cond <- items_u$display_condition[j]
+    if (is.na(cond) || !nzchar(cond) || tolower(trimws(cond)) == "none") return(NULL)
+    m <- regmatches(cond, regexec("^\\s*If\\s+(.*?)\\s+(IS NOT|IS|EQUALS|=)\\s+(.*?)\\s*$", cond, perl = TRUE))[[1]]
+    if (!length(m)) return(cond)
+    q <- norm(m[2]); parent <- which(texts == q & seq_along(texts) != j)
+    if (!length(parent)) parent <- which(startsWith(texts, substr(q, 1, 40)) & seq_along(texts) != j)
+    if (length(parent) != 1) return(cond)
+    list(item = items_u$name[parent], equals = m[4], negate = m[3] == "IS NOT")
+  })
 }
 
 #' Match codebook quest codes to data columns (exact, then trailing digits).
@@ -383,31 +428,48 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
       pct_num <- if (length(v)) mean(!is.na(num)) else NA_real_
       i <- if (!is.na(col_code[[col]])) which(cb$quest_code == col_code[[col]])[1] else NA_integer_
       item_text <- if (!is.na(i)) cb$item_text[i] else NA_character_
-      qcode <- if (!is.na(i)) cb$quest_code[i] else sub("^(quest_[0-9]+).*$", "\\1", col)
+      # One item per question: survey copies of a code share the base id
+      qcode <- mw_base_code(if (!is.na(i)) cb$quest_code[i] else col)
       qtype <- if (!is.na(i)) toupper(cb$question_type[i] %||% NA) else NA_character_
       coding_rng <- if (!is.null(cod)) { cc <- cod$code[cod$quest_code == qcode]; if (length(cc)) range(cc, na.rm = TRUE) else NULL } else NULL
       cb_rng <- if (!is.na(i) && !is.na(cb$response_min[i]) && !is.na(cb$response_max[i])) c(cb$response_min[i], cb$response_max[i]) else NULL
       item_rows[[length(item_rows) + 1]] <- tibble::tibble(
         session = k, column = col, quest_code = qcode,
-        name = if (!is.na(i)) mw_item_slug(cb$item_text[i], cb$item_choice[i]) else col,
+        name = if (!is.na(i)) mw_item_name(cb, i) else col,
         item_text = item_text, question_type = qtype,
+        survey = if (!is.na(i)) cb$survey_name[i] else NA_character_,
+        display_condition = if (!is.na(i)) cb$display_condition[i] else NA_character_,
         declared_lo = (coding_rng %||% cb_rng %||% c(NA, NA))[1], declared_hi = (coding_rng %||% cb_rng %||% c(NA, NA))[2],
         declared_from = if (!is.null(coding_rng)) "coding" else if (!is.null(cb_rng)) "codebook" else NA_character_,
         observed_lo = if (any(!is.na(num))) min(num, na.rm = TRUE) else NA_real_,
         observed_hi = if (any(!is.na(num))) max(num, na.rm = TRUE) else NA_real_,
         n_answered = length(v), pct_numeric = pct_num,
         n_distinct = dplyr::n_distinct(v),
-        free_text = identical(qtype, "TEXT") || (length(v) >= 5 && !is.na(pct_num) && pct_num < 0.5 && dplyr::n_distinct(v) / length(v) > 0.5))
+        free_text = identical(qtype, "TEXT") || (length(v) >= 5 && !is.na(pct_num) && pct_num < 0.5 && dplyr::n_distinct(v) / length(v) > 0.5),
+        time_field = !is.na(qtype) && qtype %in% c("TIME", "DATE", "DATETIME"),
+        multi_select = !is.na(qtype) && qtype %in% c("MULTIPLE_CHOICE", "MULTIPLE_CHOIC"),
+        response_options = if (!is.na(i) && "response_options" %in% names(cb)) cb$response_options[i] else NA_character_)
     }
   }
   items <- dplyr::bind_rows(item_rows)
   if (!nrow(items)) stop("[metricwire_project_to_config] no question columns found in any session.", call. = FALSE)
-  # Information-only questions (field-group headers) are not items.
-  info <- !is.na(items$question_type) & grepl("^INFORMATION", items$question_type)
+  # Information screens and field-group headers are not items. A field
+  # group's child questions are not in the codebook; they only appear as
+  # columns in an export, and are flagged there under ema_items.names.
+  info <- !is.na(items$question_type) & grepl("^INFORMATION|^FIELD_GROUP", items$question_type)
   if (any(info)) {
-    note("metricwire", "ema_items.information", "derived", paste0(sum(info), " information-only question(s) dropped: ", paste(unique(items$name[info]), collapse = ", ")))
+    note("metricwire", "ema_items.information", "derived", paste0(sum(info), " information screen(s) / field-group header(s) dropped: ", paste(unique(items$name[info]), collapse = ", ")))
+    if (any(grepl("^FIELD_GROUP", items$question_type[info]))) note("metricwire", "ema_items.field_groups", "ask",
+      paste0(sum(grepl("^FIELD_GROUP", items$question_type[info])), " field group(s) (", paste(unique(items$name[info & grepl("^FIELD_GROUP", items$question_type)]), collapse = ", "),
+             "): their child questions are not listed in the codebook and arrive as unnamed columns on the first pull; name them then"))
     items <- items[!info, ]
   }
+  # The same question coded differently in two surveys (lesson C2 across batteries)
+  rng_conflict <- items |>
+    dplyr::filter(!is.na(.data$declared_lo)) |>
+    dplyr::distinct(.data$quest_code, .data$survey, .data$declared_lo, .data$declared_hi) |>
+    dplyr::mutate(n_codings = dplyr::n_distinct(paste(.data$declared_lo, .data$declared_hi)), .by = "quest_code") |>
+    dplyr::filter(.data$n_codings > 1)
   # One row per item across sessions: same quest code = same item.
   items_u <- items |>
     dplyr::summarise(
@@ -415,16 +477,26 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
       name = dplyr::first(stats::na.omit(.data$name)),
       item_text = dplyr::first(stats::na.omit(.data$item_text)),
       question_type = dplyr::first(stats::na.omit(.data$question_type)),
+      display_condition = dplyr::first(stats::na.omit(.data$display_condition)),
       declared_lo = dplyr::first(stats::na.omit(.data$declared_lo)), declared_hi = dplyr::first(stats::na.omit(.data$declared_hi)),
       declared_from = dplyr::first(stats::na.omit(.data$declared_from)),
       observed_lo = suppressWarnings(min(.data$observed_lo, na.rm = TRUE)), observed_hi = suppressWarnings(max(.data$observed_hi, na.rm = TRUE)),
       n_answered = sum(.data$n_answered), free_text = any(.data$free_text),
+      time_field = any(.data$time_field), multi_select = any(.data$multi_select),
+      response_options = dplyr::first(stats::na.omit(.data$response_options)),
       sessions = paste(unique(.data$session), collapse = ","),
       .by = "quest_code") |>
     dplyr::mutate(observed_lo = ifelse(is.finite(.data$observed_lo), .data$observed_lo, NA_real_),
                   observed_hi = ifelse(is.finite(.data$observed_hi), .data$observed_hi, NA_real_))
   items_u$name[is.na(items_u$name)] <- items_u$quest_code[is.na(items_u$name)]
   items_u$name <- make.unique(slug(items_u$name), sep = "_")
+  for (qc in unique(rng_conflict$quest_code)) {
+    r <- rng_conflict[rng_conflict$quest_code == qc, ]
+    nm <- items_u$name[items_u$quest_code == qc]
+    note("metricwire", paste0("ema_items.", nm, ".range"), "ask",
+         paste0("coded differently by survey: ", paste0(r$survey %||% "?", " ", r$declared_lo, "-", r$declared_hi, collapse = "; "),
+                ". Recode to one scale before pooling (lesson C2); the proposal keeps the first"))
+  }
   no_cb <- items_u$name[is.na(items_u$item_text)]
   if (length(no_cb)) note("metricwire", "ema_items.names", "ask", paste0(length(no_cb), " column(s) have no codebook entry and keep their column name: ", paste(utils::head(no_cb, 8), collapse = ", ")))
 
@@ -457,7 +529,7 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
     tp$quest_code <- mw_column_to_code(tp$column, items_u$quest_code)
     for (sv in unique(tp$survey)) {
       its <- items_u$name[match(unique(stats::na.omit(tp$quest_code[tp$survey == sv])), items_u$quest_code)]
-      its <- its[!is.na(its) & !its %in% items_u$name[items_u$free_text]]
+      its <- its[!is.na(its) & !its %in% items_u$name[items_u$free_text | items_u$time_field | items_u$multi_select]]
       for (k in keys) blocks[[k]][[slug(sv)]] <- as.list(its)
       for (qc in unique(stats::na.omit(tp$quest_code[tp$survey == sv]))) carried[[qc]] <- unique(c(carried[[qc]], sv))
     }
@@ -522,16 +594,28 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
     note("metricwire", "id_column", "ask", paste0("no account field matches ", id_pattern, " in >= 50% of rows; candidates: ", paste(id_candidates, collapse = ", ")))
   }
 
-  # 8. Assemble
+  # 8. Gates: the dashboard codebook states them as "If <question> IS <value>"
+  gates <- mw_resolve_gates(items_u)
+  if (!any(!is.na(items_u$display_condition))) {
+    note("metricwire", "ema_items.*.gate", "ask", "gates (an item shown only when another item fired) are not in this codebook; declare them from the survey logic")
+  } else {
+    for (j in which(!vapply(gates, is.null, logical(1)))) {
+      g <- gates[[j]]
+      if (is.character(g)) note("metricwire", paste0("ema_items.", items_u$name[j], ".gate"), "ask", paste0("display condition not resolved to an item: ", g))
+      else note("metricwire", paste0("ema_items.", items_u$name[j], ".gate"), "derived", paste0("shown only when ", g$item, " is '", g$equals, "'"))
+    }
+  }
+
+  # 9. Assemble
   ema_items <- lapply(seq_len(nrow(items_u)), function(j) {
     it <- items_u[j, ]
-    if (it$free_text) return(NULL)
+    if (it$free_text || it$time_field || it$multi_select) return(NULL)
     rng <- if (!is.na(it$declared_lo)) c(it$declared_lo, it$declared_hi) else if (!is.na(it$observed_lo)) c(it$observed_lo, it$observed_hi) else c(0, 0)
-    list(name = it$name, raw = it$column, quest_code = it$quest_code, range = as_whole(rng), gate = "none",
+    raw <- strsplit(it$column, " | ", fixed = TRUE)[[1]]
+    list(name = it$name, raw = if (length(raw) > 1) as.list(raw) else raw, quest_code = it$quest_code, range = as_whole(rng), gate = gates[[j]] %||% "none",
          prompts = as.list(carried[[it$quest_code]] %||% list()), item_text = it$item_text %||% NA_character_)
   })
   ema_items <- Filter(Negate(is.null), ema_items)
-  note("metricwire", "ema_items.*.gate", "ask", "gates (an item shown only when another item fired) are not in the codebook; declare them from the survey logic")
   block <- list(
     enabled = TRUE,
     base_url = mw$base_url %||% "https://consumer-api.metricwire.com",
@@ -544,6 +628,9 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
     sessions = sessions,
     ema_items = ema_items,
     free_text_fields = as.list(ft$name),
+    time_fields = lapply(which(items_u$time_field), function(j) list(name = items_u$name[j], raw = items_u$column[j], item_text = items_u$item_text[j])),
+    multi_select_fields = lapply(which(items_u$multi_select & !items_u$free_text), function(j)
+      list(name = items_u$name[j], raw = items_u$column[j], item_text = items_u$item_text[j], options = items_u$response_options[j] %||% NA_character_)),
     safety_items = lapply(seq_len(nrow(safety)), function(j) list(name = safety$name[j], item_text = safety$item_text[j], safety_min = NULL)),
     prompt_blocks = blocks)
   if (!is.null(id_range)) block$id_range <- id_range
@@ -551,6 +638,8 @@ metricwire_project_to_config <- function(project, config = NULL, id_pattern = "^
     block$studies_in_workspace <- as.list(project$studies[[intersect(c("name", "internal_name", "internalName"), names(project$studies))[1]]])
     note("metricwire", "study_id", "ask", paste0(nrow(project$studies), " studies in the workspace; two can share a participant-facing name (UFOs). Leave study_id null unless the roster must be restricted"))
   }
+  if (any(items_u$time_field)) note("metricwire", "time_fields", "derived", paste0(sum(items_u$time_field), " clock-time question(s) kept as time_fields, not scored: ", paste(items_u$name[items_u$time_field], collapse = ", ")))
+  if (any(items_u$multi_select & !items_u$free_text)) note("metricwire", "multi_select_fields", "derived", paste0(sum(items_u$multi_select & !items_u$free_text), " select-all question(s) kept as multi_select_fields (exported as joined codes, not a scale): ", paste(items_u$name[items_u$multi_select & !items_u$free_text], collapse = ", ")))
   note("metricwire", "battery_map", "ask", "which battery each session is, and the evidence (a verified cross-check against randomization), is not in MetricWire")
 
   list(config = list(metricwire = block),

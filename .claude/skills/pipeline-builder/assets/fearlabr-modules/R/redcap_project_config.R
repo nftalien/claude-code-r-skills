@@ -252,7 +252,8 @@ redcap_field_ranges <- function(metadata) {
 #'
 #' @return List: instruments (config list), todo (tibble), detail (tibble).
 redcap_derive_instruments <- function(metadata, instruments_tbl = NULL, id_column = NULL,
-                                      min_items = 3L, min_valid_prop = 0.8) {
+                                      min_items = 3L, min_valid_prop = 0.8, scored_forms = character(0)) {
+  scored_forms <- slug(scored_forms)
   rng <- redcap_field_ranges(metadata)
   rng <- rng[!rng$field_name %in% id_column, ]
   labels <- NULL
@@ -279,7 +280,10 @@ redcap_derive_instruments <- function(metadata, instruments_tbl = NULL, id_colum
     calc_here <- metadata[metadata$form_name == form & tolower(metadata$field_type) == "calc", ]
     admin_name <- grepl("fidelity|interview|monitoring|consent|demograph|screen|tlfb|contact|visit|randomi|withdraw|^ae_|adverse|eligib|enrol|passcode|icf", ikey)
     binary_only <- (hi - lo) <= 1
-    weak <- nrow(calc_here) == 0 && (binary_only || admin_name)
+    weak <- nrow(calc_here) == 0 && (binary_only || admin_name) && !ikey %in% scored_forms
+    if (ikey %in% scored_forms) todo[[length(todo) + 1]] <- tibble::tibble(
+      section = "instruments", key = ikey, status = "derived",
+      note = paste0("declared scored by the study (scored_forms); ", n, " items on ", lo, "-", hi, " summed"))
     if (weak) {
       todo[[length(todo) + 1]] <- tibble::tibble(
         section = "instruments", key = ikey, status = "ask",
@@ -349,7 +353,7 @@ redcap_derive_instruments <- function(metadata, instruments_tbl = NULL, id_colum
 #' @return List: config (list ready for yaml), todo (tibble: section, key,
 #'   status in derived | inferred | default | ask, note), detail (instrument table).
 redcap_project_to_config <- function(project, study_name = NULL, default_window = c(-7, 7),
-                                     min_items = 3L, min_valid_prop = 0.8) {
+                                     min_items = 3L, min_valid_prop = 0.8, scored_forms = character(0)) {
   md <- project$metadata; ev <- project$events; fem <- project$form_event_map
   todo <- list()
   note <- function(section, key, status, text) {
@@ -371,7 +375,7 @@ redcap_project_to_config <- function(project, study_name = NULL, default_window 
   note("redcap", "id_column", "derived", paste0("first field of the dictionary: ", id_col))
 
   # Instruments
-  inst <- redcap_derive_instruments(md, project$instruments, id_column = id_col,
+  inst <- redcap_derive_instruments(md, project$instruments, id_column = id_col, scored_forms = scored_forms,
                                     min_items = min_items, min_valid_prop = min_valid_prop)
   inst_forms <- names(inst$instruments)
   form_of_key <- stats::setNames(unique(md$form_name), slug(unique(md$form_name)))

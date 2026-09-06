@@ -17,12 +17,16 @@
 #   # Files: the three exports from Project Setup (mapping optional).
 #   Rscript scripts/derive_config.R mystudy --dict metadata/DataDictionary.csv \
 #       --events metadata/events.csv --map metadata/instrument_event_map.csv
+#   add --scored ptsdpc5,cssrs to keep yes/no forms the study scores as counts
 # ════════════════════════════════════════════════════════════════════════
 
 suppressPackageStartupMessages({ library(fearlabr) })
 args <- commandArgs(trailingOnly = TRUE)
 opt <- function(flag) { i <- match(flag, args); if (is.na(i) || i == length(args)) NULL else args[i + 1] }
-positional <- args[!grepl("^--", args) & !seq_along(args) %in% (match(c("--dict", "--events", "--map"), args) + 1)]
+positional <- args[!grepl("^--", args) & !seq_along(args) %in% (match(c("--dict", "--events", "--map", "--scored"), args) + 1)]
+# --scored form1,form2: forms the study declares scored even though the
+# dictionary alone could not tell (yes/no counts such as PC-PTSD-5, C-SSRS)
+scored_forms <- if (!is.null(opt("--scored"))) trimws(strsplit(opt("--scored"), ",")[[1]]) else character(0)
 study_name <- if (length(positional)) positional[1] else NULL
 
 files <- NULL
@@ -46,7 +50,7 @@ project <- if (!is.null(files)) {
 }
 rm(token)
 
-proposal <- redcap_project_to_config(project, study_name = study_name %||% config$study$name)
+proposal <- redcap_project_to_config(project, study_name = study_name %||% config$study$name, scored_forms = scored_forms)
 redcap_config_report(proposal)
 write_proposed_config(proposal, dir = ".")
 cat("\nNext: review metadata/config_todo.csv, merge _config.proposed.yml into _config.yml, then\n",

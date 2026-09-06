@@ -45,6 +45,24 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   blocks by survey name, free text, safety candidates, the account field
   holding the participant ID), `metricwire_config_report()`,
   `merge_proposals()`; `metricwire_list_studies()` for GET /studies.
+  Before the first pull, the dashboard's Data Import templates
+  (`metricwire_read_import_templates()`, header-only CSVs, one per survey)
+  give the prompt blocks. A codebook column `canonical_name` fixes an
+  item's name across re-derivations. Clock-time questions go to
+  `time_fields` and select-all questions to `multi_select_fields`, not to
+  the scored items. Survey copies of one question (`quest_<q>_<survey>`)
+  are one item with every column in `raw`; when the copies are coded
+  differently (0-4 in one battery, 1-5 in the other) the range is an ask.
+* `R/metricwire_codebook_pdf.R`: `parse_metricwire_codebook_pdf()` reads a
+  real dashboard codebook PDF (pdftools, layout preserved): the Question
+  Level Response Variables table (variable codes that wrap over two or
+  three lines, LIKERT rows without a format cell, columns that drift
+  between pages), the Breakdown of Each Question (display conditions
+  become item gates through `mw_resolve_gates()`, question groups,
+  response required) and the trigger table; study id and survey summary
+  are attributes. `metricwire_read_codebook()` dispatches on the `%PDF`
+  magic bytes, so the text-blob parser still serves the older codebooks.
+  Field groups are headers: their children only appear as export columns.
 * `R/eeg_project_config.R`: propose the `eeg` block from the files. Readers
   for the feature export (`eeg_detect_columns()`, wide-layout detection),
   BrainVision `.vhdr` / `.vmrk` (`brainvision_read_vhdr()`,

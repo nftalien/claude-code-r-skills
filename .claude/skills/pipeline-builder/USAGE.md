@@ -52,8 +52,11 @@ Rscript scripts/derive_ema_config.R --codebook period_1=metadata/period_1_codebo
 ```
 
 It reads each session's data (pulled with your MetricWire credentials, or
-the cached export), the codebook, and the choicesDataCoding export if you
-have one, and adds the EMA block: sessions, items with names and ranges,
+the cached export), the codebook (the dashboard PDF as downloaded, or the
+parsed CSV), and the choicesDataCoding export if you have one, and adds
+the EMA block. A study with no data yet adds the dashboard's Data Import
+templates (`--template "Morning Battery=metadata/Morning_Data_Import.csv"`)
+and gets the same block from the survey definitions. The block has: sessions, items with names and ranges,
 which prompts carry which items, free-text fields, safety candidates, and
 which account field holds the participant ID. It flags an analysis exported
 without Missed rows and a declared range the data contradicts, the two

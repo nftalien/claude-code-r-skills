@@ -77,6 +77,20 @@ the client credentials and `metricwire.sessions[*].analysis_id` is set;
 otherwise `--data key=path` per session. The analysis ids come from the
 MetricWire analysis page and are typed once.
 
+The codebook is the dashboard PDF as downloaded (pdftools reads it, layout
+preserved) or a parsed items CSV. The PDF gives more than the item list:
+each question's display condition (the gate), question group, whether a
+response is required, the trigger schedule per survey and the study id.
+What it does not give is a field group's children; those arrive as
+unnamed columns on the first pull and are named then. A study that has no
+data yet adds the Data Import templates (`--template "<survey
+name>=<csv>"`) so the prompt blocks come from the survey definitions.
+
+Keep the study's item vocabulary in the codebook CSV's `canonical_name`
+column (generated from the PDF plus a small names file, as the FARM-TOK
+project does in `scripts/build_ema_codebook_csv.R`); a re-derivation then
+keeps the names the notebooks already use.
+
 What it derives: sessions and whether each export carries Missed rows (an
 analysis without them reads 100% compliance; fix the analysis definition at
 source, then re-pull); every question column with its codebook text and a
@@ -94,9 +108,19 @@ The `ask` rows for EMA:
 - **A declared range the data contradicts** (coding 1-5, data 0-4). The
   momentary scale is usually zero-based even when the panel version is not.
   Fix the range; never proceed with NAs.
-- **Gates.** An item shown only when another fired (`affect >=
-  eligibility_cutoff`, `past_stress_event == 1`). From the survey logic in
-  MetricWire; the codebook does not carry it.
+- **Gates.** An item shown only when another fired. The dashboard PDF
+  states these as display conditions ("If <question> IS Yes") and the
+  proposal resolves them to `gate: {item, equals}`; a condition it could
+  not resolve to an item, or a gate on a threshold (`affect >=
+  eligibility_cutoff`), is asked.
+- **One question, two codings.** The same question appears once per
+  survey (`quest_<q>_<survey>`) and the surveys may code it differently
+  (0-4 in the morning battery, 1-5 in the evening one). The proposal
+  keeps one item with every column in `raw` and asks for the range; recode
+  to one scale at 04 before pooling.
+- **Clock times and select-all questions.** Listed under `time_fields`
+  and `multi_select_fields`, never scored as items; a select-all export
+  is a joined code string, which 04 splits into indicator columns.
 - **Safety thresholds.** `safety_min` per candidate item, from the
   protocol. A candidate is found by wording; the threshold never is.
 - **Battery map.** Which battery each session is and the evidence (UFOs:

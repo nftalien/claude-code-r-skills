@@ -133,12 +133,22 @@ Rscript scripts/derive_ema_config.R --codebook period_1=metadata/period_1_codebo
     --coding period_1=metadata/period_1_coding.csv --id-pattern '^[0-9]{4}$'
 ```
 
+Before the first pull, the codebook alone plus the dashboard's Data Import
+templates (Survey > Data Import, header-only CSVs, one per survey) are
+enough to propose the block: `--template "Morning Battery=metadata/...csv"`.
+The codebook may be the real dashboard PDF (read with pdftools, layout
+preserved) or the parsed items CSV; a `canonical_name` column in that CSV
+fixes the study's own item names across re-derivations.
+
 It adds the `metricwire` block to the same proposal: sessions with a hard
 flag on any analysis without Missed rows, items with codebook names and
 declared-versus-observed ranges, which survey names carry which items,
-free-text fields, safety candidates, and which account field holds the
-participant ID. Gates, the battery map and safety thresholds are always
-asked. `references/builder-interview.md` section 1b walks those rows.
+clock-time and select-all questions kept apart from the scored items,
+free-text fields, safety candidates, gates read from the codebook's display
+conditions, one item per question across its survey copies (with a stop
+when the copies are coded differently), and which account field holds the
+participant ID. The battery map and safety thresholds are always asked.
+`references/builder-interview.md` section 1b walks those rows.
 
 For EEG and sensors there is no metadata system; the files are the
 metadata. Once the exports are in `data/raw/eeg/` and `data/raw/sensor/`:
