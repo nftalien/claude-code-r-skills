@@ -244,9 +244,16 @@ Repeat until `next_stage(m)` is `NULL`:
    `mark_stage(m, id, "generated")` and save the manifest.
 3. **Render.** Terminal, not the R console:
    ```
-   quarto render notebooks/<id>.qmd --output-dir output/renders
+   Rscript scripts/render_stage.R <id>
    ```
-   The notebook's last chunk marks the stage `rendered` in `_pipeline.yml`.
+   The notebook's last chunk marks the stage `rendered` in `_pipeline.yml`,
+   and the script files the HTML at `output/renders/<id>.html`. Do not
+   reach for `quarto render <file> --output-dir output/renders`: that flag
+   puts Quarto into project mode for a single file, creating
+   `notebooks/.quarto` and deleting it at the end, and on Windows the
+   delete fails with `os error 32 ... used by another process` whenever
+   the editor's file monitor or antivirus holds a handle there. It fails
+   *after* the render succeeded, so the stage looks broken when it is not.
 4. **Verify.** The person sends the HTML or the console tail. Run
    `summarise_render_log()` on the text, quote every `⚠️` and `⏭` line, read
    the ID audit lines and the numbers the stage contract says to read, and
@@ -360,4 +367,7 @@ that only works from a chat.
 - `assets/example-redcap-metadata/`: the three export files, fictional, as the
   derivation expects them.
 - `scripts/proof_modalities.R`: synthetic proof of everything this skill adds.
+- `scripts/render_stage.R`: render one stage and file its HTML at
+  `output/renders/<id>.html`, without Quarto project mode (see step 3).
+  Copy it into the study alongside the other scripts.
 - `USAGE.md`: the human-facing guide.
