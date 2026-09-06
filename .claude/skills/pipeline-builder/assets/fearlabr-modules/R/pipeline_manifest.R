@@ -173,9 +173,16 @@ mark_stage <- function(manifest, id, status, note = NULL, render = NULL, force =
   i <- stage_index(manifest, id)
   s <- manifest$stages[[i]]
   if (status == "generated") assert_stage_ready(manifest, id)
+  # Approving something already approved is a no-op, not a mistake: it happens
+  # when a step is repeated. Only approving something never rendered is wrong.
+  if (status == "approved" && identical(s$status, "approved")) {
+    cat("\u2022 ", id, " is already approved (", s$approved_at %||% "earlier", "); nothing to do\n", sep = "")
+    return(manifest)
+  }
   if (status == "approved" && !identical(s$status, "rendered") && !isTRUE(force)) {
     stop("[mark_stage] '", id, "' is '", s$status, "', not 'rendered'. A stage is ",
-         "approved only after its render has been looked at.", call. = FALSE)
+         "approved only after its render has been looked at.",
+         if (identical(s$status, "planned")) " Render it first." else "", call. = FALSE)
   }
   now <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
   s$status <- status
