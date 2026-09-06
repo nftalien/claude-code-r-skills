@@ -319,17 +319,22 @@ mw_item_slug <- function(item_text, item_choice = NA_character_, max_words = 4) 
 #' the pipeline coalesces into one item); then a code whose digits end the
 #' column name. NA when nothing matches.
 mw_column_to_code <- function(columns, quest_codes) {
+  # The export is read through janitor::clean_names(), which lower-cases every
+  # column, while the codebook keeps the dashboard's own casing (AM_Loc_...).
+  # Match case-insensitively and return the codebook's spelling, or a
+  # dashboard-named variable silently fails to match its own item.
   out <- rep(NA_character_, length(columns))
   codes <- quest_codes[order(-nchar(quest_codes))]
+  lc_codes <- tolower(codes); lc_quest <- tolower(quest_codes)
   for (j in seq_along(columns)) {
-    col <- columns[j]
-    if (col %in% quest_codes) { out[j] <- col; next }
-    pre <- codes[startsWith(col, paste0(codes, "_"))]
-    if (length(pre)) { out[j] <- pre[1]; next }
-    d <- sub("^quest_", "", codes)
-    hit <- nzchar(d) & vapply(d, function(dd) grepl(paste0("(^|[^0-9])", dd, "$"), col), logical(1))
-    tail_hit <- codes[hit]
-    if (length(tail_hit) == 1) out[j] <- tail_hit
+    col <- tolower(columns[j])
+    hit <- match(col, lc_quest)
+    if (!is.na(hit)) { out[j] <- quest_codes[hit]; next }
+    pre <- which(startsWith(col, paste0(lc_codes, "_")))
+    if (length(pre)) { out[j] <- codes[pre[1]]; next }
+    d <- sub("^quest_", "", lc_codes)
+    tail_ok <- nzchar(d) & vapply(d, function(dd) grepl(paste0("(^|[^0-9])", dd, "$"), col), logical(1))
+    if (sum(tail_ok) == 1) out[j] <- codes[which(tail_ok)]
   }
   out
 }

@@ -170,3 +170,14 @@ test_that("codebook-only proposal from a parsed CSV with canonical names: gates,
   expect_true(any(t$key == "ema_items.worthwhile.gate" & t$status == "derived"))
   expect_false(any(t$key == "ema_items.*.gate"))
 })
+
+test_that("mw_column_to_code matches the export's lower-cased columns to the codebook's casing", {
+  codes <- c("AM_Loc_1744980522641", "quest_1720030660782_1744980522641")
+  cols <- c("am_loc_1744980522641", "am_loc_1744980522641_1744984140546",
+            "quest_1720030660782_1744980522641", "quest_9999")
+  out <- mw_column_to_code(cols, codes)
+  expect_equal(out[1], "AM_Loc_1744980522641")            # janitor lower-cased it
+  expect_equal(out[2], "AM_Loc_1744980522641")            # survey copy of the same question
+  expect_equal(out[3], "quest_1720030660782_1744980522641")
+  expect_true(is.na(out[4]))
+})
