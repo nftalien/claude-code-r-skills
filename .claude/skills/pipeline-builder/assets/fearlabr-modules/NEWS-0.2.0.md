@@ -23,6 +23,14 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   `link_sensor_to_timepoints()`, `plot_sensor_coverage()`. Epoch timestamps
   become local dates through the configured `sensors.tz`, never through
   `as.Date()` on a POSIXct.
+* `R/id_repairs.R`: a participant whose id was mistyped into a collection app
+  has real data under a label nothing joins on. Dropping those rows loses a
+  participant; rewriting them in a cleaning script leaves no trace of a change
+  to identifiers. So repairs are declared in `metadata/id_repairs.csv`
+  (from_id, to_id, source, reason) and applied by `apply_id_repairs()`, which
+  prints every rewrite with its row count and warns when a repair matches
+  nothing. `read_id_repairs()` refuses a repair to a non-existent id, an id
+  mapped to itself, a duplicate, or one without a reason.
 * `R/pipeline_manifest.R`: `_pipeline.yml`, the stage-by-stage build record.
   Notebook helpers `builder_stage_gate()`, `builder_record_render()`,
   `builder_approve()`. `builder_stage_registry()`, `new_pipeline_manifest()`, `mark_stage()`
