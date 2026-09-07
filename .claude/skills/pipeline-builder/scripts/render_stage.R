@@ -13,9 +13,15 @@
 # script then moves the HTML to output/renders/<id>.html, which is where
 # builder_record_render() records it and where 00b looks for it.
 # ════════════════════════════════════════════════════════════════════════
-args <- commandArgs(trailingOnly = TRUE)
-if (length(args) != 1) stop("Usage: Rscript scripts/render_stage.R <stage id>, e.g. 00_setup")
-id <- sub("\\.qmd$", "", basename(args[1]))
+# Two ways to call this, because both are natural and getting it wrong wastes
+# a round trip:
+#   terminal:  Rscript scripts/render_stage.R 03_clean_redcap
+#   R console: source("scripts/render_stage.R"); render_stage("03_clean_redcap")
+# The body is a function; the command-line shim at the bottom calls it.
+
+render_stage <- function(stage) {
+
+id <- sub("\\.qmd$", "", basename(stage))
 qmd <- file.path("notebooks", paste0(id, ".qmd"))
 if (!file.exists(qmd)) stop(qmd, " not found. Stages live in notebooks/.")
 
@@ -67,3 +73,19 @@ if (dir.exists(side)) unlink(side, recursive = TRUE)
 
 cat("\u2713 ", dest, " (", round(file.size(dest) / 1024), " KB)\n", sep = "")
 cat("  Look at it, then approve in the R console: builder_approve(\"", id, "\")\n", sep = "")
+
+invisible(dest)
+}
+
+# Command-line shim. `--file=` is present only when R was started ON this
+# script, so this is skipped whenever the file is source()d instead --
+# interactive session or not.
+if (any(grepl("^--file=.*render_stage\\.R$", commandArgs()))) {
+  .args <- commandArgs(trailingOnly = TRUE)
+  if (length(.args) != 1) {
+    stop("Usage: Rscript scripts/render_stage.R <stage id>, e.g. 00_setup\n",
+         "  From the R console instead: ",
+         "source(\"scripts/render_stage.R\"); render_stage(\"00_setup\")")
+  }
+  render_stage(.args[1])
+}

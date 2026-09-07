@@ -259,9 +259,13 @@ Repeat until `next_stage(m)` is `NULL`:
      becomes empty and every comparison against it returns `logical(0)` —
      which surfaces much later as a recycling error naming an innocent
      variable. `validation.max_missing_allowed` was the one that bit.
-3. **Render.** Terminal, not the R console:
+3. **Render.** From the terminal, or from the R console — the script works
+   either way, and telling someone the wrong one costs a round trip:
    ```
-   Rscript scripts/render_stage.R <id>
+   Rscript scripts/render_stage.R <id>          # terminal
+   ```
+   ```r
+   source("scripts/render_stage.R"); render_stage("<id>")   # R console
    ```
    The notebook's last chunk marks the stage `rendered` in `_pipeline.yml`,
    and the script files the HTML at `output/renders/<id>.html`. Do not
