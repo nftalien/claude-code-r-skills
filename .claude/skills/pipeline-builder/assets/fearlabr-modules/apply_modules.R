@@ -84,6 +84,24 @@ if (!file.exists(cr_path)) {
   }
 }
 
+# 1b2. Patch R/clean_redcap.R to honour each instrument's reverse_coded list.
+cr2 <- readLines(cr_path)
+if (any(grepl("rev_declared", cr2, fixed = TRUE))) {
+  cat("• clean_redcap.R already reverses reverse_coded items\n")
+} else {
+  sig <- grep("^score_instrument <- function\\(df, instr_name, instr_cfg", cr2)
+  if (length(sig) != 1) {
+    stop("Cannot locate score_instrument() in R/clean_redcap.R; re-cut ",
+         "patches/clean_redcap-reverse_coded.txt.")
+  }
+  hit <- which(cr2 == "  out <- df" & seq_along(cr2) > sig[1])
+  if (!length(hit)) stop("Cannot locate the 'out <- df' anchor in score_instrument().")
+  new <- readLines(file.path(here_dir, "patches", "clean_redcap-reverse_coded.txt"))
+  cr2 <- c(cr2[seq_len(hit[1] - 1L)], new, cr2[(hit[1] + 1L):length(cr2)])
+  writeLines(cr2, cr_path)
+  cat("✓ clean_redcap.R: reverse_coded honoured\n")
+}
+
 # 1c. Patch R/structural_skips.R so a rule's trigger_op is honoured. Without it
 #     the operator is decorative and every rule is applied as "==", which
 #     inverts every rule derived from REDCap branching logic.

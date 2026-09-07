@@ -102,6 +102,17 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   randomisation values for one participant is an error where it happens.
   The patch is anchor-based and idempotent, and stops rather than
   half-applying if `clean_redcap()` changes shape upstream.
+* `patches/clean_redcap-reverse_coded.txt`: every derived REDCap instrument
+  block carries a `reverse_coded` list, and `score_instrument()` read none of
+  them -- it summed raw item values, so a positively-worded item counted as
+  though it were negatively worded. Silent, and wrong in the direction that
+  flatters the scale's internal consistency. Items are now reversed about the
+  declared `item_range` (`min + max - x`) in a copy used for the total and
+  every subscale alike, so the two cannot disagree; the raw columns survive
+  into the exports and the item-missingness report. An out-of-range value
+  mirrors to another out-of-range value and is still counted, a
+  `reverse_coded` name that is not in `items_in_order` stops rather than
+  silently reversing nothing, and the reversal is announced per instrument.
 * `patches/structural_skips-trigger_op.txt` and the derivation in
   `R/redcap_project_config.R`: a structural skip rule says when a section
   **was skipped**, so its downstream items score at the floor instead of

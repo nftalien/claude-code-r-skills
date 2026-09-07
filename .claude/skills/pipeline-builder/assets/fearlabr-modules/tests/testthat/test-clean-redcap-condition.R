@@ -75,3 +75,57 @@ test_that("two randomisation values for one participant is an error", {
     "more than one value"
   )
 })
+
+# ── reverse-coded items ───────────────────────────────────────────────────
+# `reverse_coded` sat in every derived REDCap config and was read by nothing.
+
+rc_rev_config <- function(reverse = c("q2")) {
+  cfg <- crc_config()
+  cfg$instruments <- list(
+    pss = list(
+      items_in_order      = c("q1", "q2"),
+      item_range          = c(0, 4),
+      total_range         = c(0, 8),
+      minimum_valid_items = 1L,
+      score_method        = "raw_sum",
+      reverse_coded       = reverse
+    )
+  )
+  cfg
+}
+
+test_that("declared items are reversed about the item range", {
+  dat <- crc_data()
+  dat$q1 <- 1L; dat$q2 <- 1L        # reversed q2 = 0 + 4 - 1 = 3
+  out <- clean_redcap(dat, rc_rev_config())
+  expect_true(all(out$assessment_level$pss_total == 4))
+  # The raw item value is preserved for export and missingness reporting.
+  expect_true(all(out$assessment_level$q2 == 1L))
+})
+
+test_that("no reverse_coded list leaves scoring unchanged", {
+  dat <- crc_data(); dat$q1 <- 1L; dat$q2 <- 1L
+  out <- clean_redcap(dat, rc_rev_config(reverse = NULL))
+  expect_true(all(out$assessment_level$pss_total == 2))
+})
+
+test_that("reversal is applied before the subscale, not only the total", {
+  cfg <- rc_rev_config()
+  cfg$instruments$pss$subscales <- list(neg = list(items = "q2"))
+  dat <- crc_data(); dat$q1 <- 1L; dat$q2 <- 1L
+  out <- clean_redcap(dat, cfg)
+  expect_true(all(out$assessment_level$pss_neg == 3))
+})
+
+test_that("a reverse_coded name that is not an item stops", {
+  dat <- crc_data(); dat$q1 <- 1L; dat$q2 <- 1L
+  expect_error(clean_redcap(dat, rc_rev_config(reverse = "q3")),
+               "not in items_in_order")
+})
+
+test_that("reversal keeps out-of-range values detectable", {
+  dat <- crc_data(); dat$q1 <- 1L
+  dat$q2 <- c(1L, 1L, 9L, 9L)       # 9 is outside 0-4
+  out <- clean_redcap(dat, rc_rev_config())
+  expect_true(any(out$assessment_level$pss_n_items_oob > 0))
+})

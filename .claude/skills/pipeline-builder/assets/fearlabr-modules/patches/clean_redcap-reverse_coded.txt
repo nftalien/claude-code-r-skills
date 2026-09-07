@@ -1,0 +1,42 @@
+  out <- df
+
+  # ── Reverse-coded items ───────────────────────────────────────────────
+  # `reverse_coded` has been written into every REDCap instrument block since
+  # the config derivation was added, and was read by nothing: the scorer summed
+  # raw item values, so a positively-worded item counted as though it were
+  # negatively worded. Silent, and wrong in the direction that flatters the
+  # scale's internal consistency.
+  #
+  # The pivot is the declared item range, so reversing x is (min + max - x).
+  # An out-of-range value mirrors to another out-of-range value and is still
+  # caught and counted by score_scale_row(); NA stays NA.
+  #
+  # Scored from a reversed copy so the total and every subscale agree. `out`
+  # keeps the raw item columns -- exports and the item-missingness report
+  # should show what the participant actually answered.
+  rev_declared <- unlist(instr_cfg$reverse_coded %||% character(0), use.names = FALSE)
+  if (length(rev_declared) > 0) {
+    not_an_item <- setdiff(rev_declared, instr_cfg$items_in_order)
+    if (length(not_an_item) > 0) {
+      stop("Instrument '", instr_name, "' lists reverse_coded item(s) that are not in ",
+           "items_in_order: ", paste(not_an_item, collapse = ", "),
+           ". Fix _config.yml -- a typo here silently reverses nothing.", call. = FALSE)
+    }
+    lo <- instr_cfg$item_range[1]
+    hi <- instr_cfg$item_range[2]
+    if (length(lo) != 1 || length(hi) != 1 || is.na(lo) || is.na(hi)) {
+      stop("Instrument '", instr_name, "' declares reverse_coded items but has no ",
+           "item_range to reverse them against.", call. = FALSE)
+    }
+    rev_present <- intersect(rev_declared, names(df))
+    for (v in rev_present) {
+      df[[v]] <- lo + hi - suppressWarnings(as.numeric(as.character(df[[v]])))
+    }
+    cat("  ↻ ", instr_name, ": reversed ", length(rev_present), " item(s) about ",
+        lo, "-", hi, " (", paste(rev_present, collapse = ", "), ")\n", sep = "")
+    if (length(rev_present) < length(rev_declared)) {
+      cat("  ⚠️  ", instr_name, ": ", length(rev_declared) - length(rev_present),
+          " reverse-coded item(s) not in the export, so not reversed: ",
+          paste(setdiff(rev_declared, rev_present), collapse = ", "), "\n", sep = "")
+    }
+  }
