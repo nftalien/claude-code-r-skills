@@ -487,12 +487,21 @@ redcap_project_to_config <- function(project, study_name = NULL, default_window 
     if (any(simple)) {
       trig <- vapply(m[simple], `[`, character(1), 2); op <- vapply(m[simple], `[`, character(1), 3); val <- vapply(m[simple], `[`, character(1), 4)
       grp <- split(bl$field_name[simple], paste(trig, op, val))
+      # REDCap branching logic states when a field is SHOWN; a structural skip
+      # rule states when it was SKIPPED. They are opposites, so invert the
+      # operator here. Copying it across verbatim fills the floor value in for
+      # exactly the people who WERE asked and left the item blank -- silently,
+      # and in whichever instrument the gate belongs to.
+      invert_op <- c("=" = "<>", "<>" = "=", "==" = "<>", "!=" = "=",
+                     ">" = "<=", "<" = ">=", ">=" = "<", "<=" = ">")
       for (g in names(grp)) {
         p <- strsplit(g, " ")[[1]]
-        skips[[length(skips) + 1]] <- list(trigger = p[1], trigger_op = p[2], trigger_value = p[3],
+        shown_op <- p[2]
+        skip_op <- invert_op[[shown_op]]
+        skips[[length(skips) + 1]] <- list(trigger = p[1], trigger_op = skip_op, trigger_value = p[3],
                                            downstream = grp[[g]], skip_value = 0)
       }
-      note("structural_skips", "rules", "inferred", paste0(length(skips), " rule(s) from single-field branching logic; the skip_value (0) is a guess"))
+      note("structural_skips", "rules", "inferred", paste0(length(skips), " rule(s) from single-field branching logic, with the shown-if operator inverted to a skipped-if rule; the skip_value (0) is a guess"))
     }
     if (any(!simple)) note("structural_skips", "complex", "ask", paste0(sum(!simple), " field(s) with multi-condition branching logic left for review: ", paste(utils::head(bl$field_name[!simple], 6), collapse = ", ")))
   }

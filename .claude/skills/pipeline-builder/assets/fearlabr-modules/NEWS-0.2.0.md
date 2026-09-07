@@ -102,6 +102,23 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   randomisation values for one participant is an error where it happens.
   The patch is anchor-based and idempotent, and stops rather than
   half-applying if `clean_redcap()` changes shape upstream.
+* `patches/structural_skips-trigger_op.txt` and the derivation in
+  `R/redcap_project_config.R`: a structural skip rule says when a section
+  **was skipped**, so its downstream items score at the floor instead of
+  counting as missing. REDCap branching logic says the opposite -- when a
+  field is **shown**. The derivation copied the branching condition across
+  verbatim and `apply_structural_skip_rules()` ignored `trigger_op` and
+  compared with `==`, so every derived rule ran inverted: the floor value was
+  written in for exactly the people who were asked and left the item blank,
+  and the people who were legitimately skipped kept their NAs. On one real
+  study that put fabricated zeros into the C-SSRS follow-up items of
+  participants who had endorsed ideation. The derivation now inverts the
+  operator (`=` becomes `<>`, `>` becomes `<=`, and so on) and the engine
+  honours `trigger_op`, defaulting to `=` so hand-written rules are unchanged.
+  Codes compare numerically, and an unknown operator stops. The canonical
+  example is why this survived: AUDIT's `[audit_1] > 0` inverts to `<= 0`,
+  which for codes 0-4 is the documented hand-written `= 0` -- the one rule
+  where the bug is invisible.
 * `R/quicklook.R`: `summarise_render_log()`, `modality_coverage_dashboard()`
   / `plot_coverage_dashboard()`, `plot_ema_compliance_heatmap()`.
 * `R/synthetic_modalities.R`: `generate_synthetic_eeg()`,
@@ -110,7 +127,7 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   config declares, at the paths the ingest globs read.
 * Tests: `test-timepoints.R`, `test-eeg.R`, `test-sensor.R`,
   `test-manifest.R`, `test-quicklook.R`, `test-synthetic-modalities.R`,
-  `test-redcap-project-config.R`, `test-metricwire-project-config.R`, `test-eeg-project-config.R`, `test-sensor-project-config.R`, `test-clean-redcap-condition.R`
-  (helper `helper-builder-config.R`).
+  `test-redcap-project-config.R`, `test-metricwire-project-config.R`, `test-eeg-project-config.R`, `test-sensor-project-config.R`, `test-clean-redcap-condition.R`,
+  `test-structural-skips.R` (trigger_op) (helper `helper-builder-config.R`).
 * `ggplot2` stays in Suggests; every plot function returns its table with a
   message when ggplot2 is absent.

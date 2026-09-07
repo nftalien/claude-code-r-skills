@@ -27,10 +27,26 @@ desc <- readLines(file.path(pkg, "DESCRIPTION"))
 if (!any(grepl("^Package: fearlabr$", desc))) stop(pkg, " is not the fearlabr package.")
 
 # 1. R files and tests
+# Copies overwrite. A module file that shadows a file fearlabr already ships
+# replaces it wholesale -- which silently dropped three upstream tests once,
+# so say which files are being replaced rather than leaving it to be noticed.
 copy_into <- function(src_glob, dst_dir) {
   files <- Sys.glob(file.path(here_dir, src_glob))
   dir.create(dst_dir, recursive = TRUE, showWarnings = FALSE)
-  for (f in files) file.copy(f, file.path(dst_dir, basename(f)), overwrite = TRUE)
+  shadowed <- character(0)
+  for (f in files) {
+    dst <- file.path(dst_dir, basename(f))
+    if (file.exists(dst) &&
+        !identical(readLines(dst, warn = FALSE), readLines(f, warn = FALSE))) {
+      shadowed <- c(shadowed, basename(f))
+    }
+    file.copy(f, dst, overwrite = TRUE)
+  }
+  if (length(shadowed)) {
+    cat("⚠️  replaced ", length(shadowed), " existing file(s) in ", dst_dir, ": ",
+        paste(shadowed, collapse = ", "),
+        "\n   The module copy must carry everything the fearlabr copy had.\n", sep = "")
+  }
   length(files)
 }
 n_r <- copy_into("R/*.R", file.path(pkg, "R"))
@@ -64,6 +80,36 @@ if (!file.exists(cr_path)) {
     cr <- c(cr[seq_len(start - 1L)], new, "", cr[stop_at:length(cr)])
     writeLines(cr, cr_path)
     cat("✓ clean_redcap.R: condition block patched (", length(old),
+        " lines -> ", length(new), ")\n", sep = "")
+  }
+}
+
+# 1c. Patch R/structural_skips.R so a rule's trigger_op is honoured. Without it
+#     the operator is decorative and every rule is applied as "==", which
+#     inverts every rule derived from REDCap branching logic.
+ss_path <- file.path(pkg, "R", "structural_skips.R")
+if (!file.exists(ss_path)) {
+  cat("• structural_skips.R not present — trigger_op patch skipped\n")
+} else {
+  ss <- readLines(ss_path)
+  if (any(grepl("trig_op", ss, fixed = TRUE))) {
+    cat("• structural_skips.R already honours trigger_op\n")
+  } else {
+    start <- grep("^    trig_val   <- rule\\$trigger_value", ss)
+    stop_at <- grep('^        length\\(downstream\\), " downstream item\\(s\\)', ss)
+    if (length(start) != 1 || length(stop_at) != 1 || stop_at[1] <= start[1]) {
+      stop("Cannot locate the rule-application block in R/structural_skips.R. ",
+           "fearlabr has changed upstream; re-cut patches/structural_skips-trigger_op.txt.")
+    }
+    old <- ss[start:stop_at]
+    if (!any(grepl("out[[trig]] == trig_val", old, fixed = TRUE))) {
+      stop("The rule-application block in R/structural_skips.R is not the one ",
+           "this patch was written against. Refusing to patch.")
+    }
+    new <- readLines(file.path(here_dir, "patches", "structural_skips-trigger_op.txt"))
+    ss <- c(ss[seq_len(start - 1L)], new, ss[(stop_at + 1L):length(ss)])
+    writeLines(ss, ss_path)
+    cat("✓ structural_skips.R: trigger_op honoured (", length(old),
         " lines -> ", length(new), ")\n", sep = "")
   }
 }

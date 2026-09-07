@@ -112,6 +112,12 @@ test_that("the proposal derives events, timepoints, conditions, identifiers and 
   expect_equal(unlist(cfg$deid$date_columns_to_shift), "consent_date")
   expect_equal(length(cfg$structural_skips), 1)
   expect_equal(cfg$structural_skips[[1]]$downstream, c("audit_2", "audit_3"))
+  # The dictionary says audit_2/3 are SHOWN when [audit_1] > 0, so the skip
+  # rule is the inverse: the section was skipped when audit_1 <= 0. (For codes
+  # 0-4 that is audit_1 == 0, the hand-written rule in the docs -- which is why
+  # copying the operator across uninverted looked harmless on this fixture.)
+  expect_equal(cfg$structural_skips[[1]]$trigger_op, "<=")
+  expect_equal(cfg$structural_skips[[1]]$trigger_value, "0")
   expect_equal(unlist(cfg$redcap$forms_to_pull), c("demographics", "randomization", "phq9", "ius12", "audit"))
   # The todo says what was inferred and what to ask
   t <- prop$todo

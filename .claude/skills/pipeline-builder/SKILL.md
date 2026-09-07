@@ -243,14 +243,21 @@ Repeat until `next_stage(m)` is `NULL`:
    `{{STUDY_NAME}}` and every other `{{PLACEHOLDER}}`, write to `notebooks/`,
    then `mark_stage(m, id, "generated")` and save the manifest.
 
-   Two things to check in every generated stage before handing it over, both
-   of which have failed a real render mid-chunk:
+   Things to check in every generated stage before handing it over, each of
+   which has cost a real render:
    - **The setup chunk attaches what the body uses.** Several templates load
      only `fearlabr`, which imports dplyr without attaching it, so a body
      using dplyr verbs or `%>%` dies at whichever chunk reaches them first.
      Add `library(dplyr)` and friends to the setup chunk.
    - **`embed-resources: true` is in the YAML**, so a render is one
      self-contained file that can be sent for review.
+   - **Every `knitr::kable()` is the last expression in its block.** knitr
+     auto-prints the visible value of each top-level expression, so
+     `if (nrow(x)) { kable(x); write_csv(x, f) }` writes the file and shows
+     nothing: the block's value is `write_csv`'s invisible return. Wrap it as
+     `print(knitr::kable(x))` or put it last. This is silent -- the render
+     succeeds and the table the verification gate asks for simply is not
+     there.
    - **Every `config$...` the stage reads actually exists.** Grep the
      generated stage for `config\$[a-z_]*\$[a-z_0-9]*` and check each one
      against `_config.yml`; the derivation proposes what the source systems
