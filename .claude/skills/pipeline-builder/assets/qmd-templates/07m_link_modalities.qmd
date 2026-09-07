@@ -1,0 +1,185 @@
+---
+title: "{{STUDY_NAME}} — 07m Link modalities"
+subtitle: "Every modality on one participant × timepoint index, with the ID audit across all of them"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-summary: "Show code"
+    embed-resources: true
+    df-print: kable
+execute:
+  warning: true
+  message: false
+---
+
+## Overview
+
+The first stage where the modalities meet. It builds one index, one row per
+participant per declared timepoint, with a column per modality saying whether
+that modality was observed there, then joins the modality tables onto it.
+Before the join it runs the ID audit across every source at once, because a
+format that drifted in one export (padding, a prefix, a case change) is the
+mechanism behind a join that quietly reaches a third of the sample.
+
+`study_id` is the key everywhere and is character. The join is `study_id`
+and `timepoint`; a modality without timepoints (a participant-level table) joins on
+`study_id` alone and is repeated across timepoints, which is the intended
+meaning of a baseline covariate.
+
+```{r}
+#| label: setup
+suppressPackageStartupMessages({ library(fearlabr); library(dplyr) })
+config <- read_config()
+stem <- fearlabr_file_stem(config)
+builder_stage_gate("07m_link_modalities")
+derived_dir <- resolve_path(config$paths$derived, config)
+validation_dir <- resolve_path(config$paths$validation %||% "output/validation", config)
+figures_dir <- resolve_path(config$paths$figures %||% "output/figures", config)
+for (d in c(validation_dir, figures_dir)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+id_col <- config$redcap$id_column
+modalities <- config_modalities(config)
+sched <- timepoint_schedule(config)
+```
+
+## Gather the sources
+
+```{r}
+#| label: gather
+log_section("Sources")
+latest <- function(name) {
+  f <- file.path(derived_dir, paste0(stem, "_", name, "_latest.rds"))
+  if (file.exists(f)) readRDS(f) else NULL
+}
+roster <- latest("redcap_participant_level")
+if (is.null(roster)) stop("03_clean_redcap has not written the participant-level file; approve 03 first.")
+roster$study_id <- as.character(roster[[id_col]])
+sources <- list(REDCap = roster$study_id)
+obs <- list()
+
+# REDCap assessments carry the timepoint through the event -> timepoint map.
+assess <- latest("redcap_assessment_long")
+if (!is.null(assess) && "redcap_event_name" %in% names(assess)) {
+  ev_map <- setNames(sched$timepoint, sched$redcap_event)
+  assess$study_id <- as.character(assess[[id_col]])
+  assess$timepoint <- unname(ev_map[assess$redcap_event_name])
+  obs$redcap <- assess |> filter(!is.na(timepoint)) |> distinct(study_id, timepoint)
+}
+ema <- latest("ema_week_linked") %||% latest("ema_event_analysis")
+if ("ema" %in% modalities && !is.null(ema) && "study_id" %in% names(ema)) {
+  sources$EMA <- ema$study_id
+  if ("timepoint" %in% names(ema)) obs$ema <- ema |> distinct(study_id, timepoint)
+}
+eeg <- latest("eeg_features_wide")
+if ("eeg" %in% modalities && !is.null(eeg)) {
+  sources$EEG <- eeg$study_id
+  obs$eeg <- eeg |> distinct(study_id, timepoint)
+}
+if ("sensors" %in% modalities) {
+  for (sk in names(config$sensors$streams)) {
+    d <- latest(paste0("sensor_", sk, "_day_valid"))
+    if (is.null(d)) next
+    sources[[paste0("sensor:", sk)]] <- d$study_id
+    if ("timepoint" %in% names(d)) {
+      obs$sensors <- bind_rows(obs$sensors, d |> filter(valid_day, !is.na(timepoint)) |>
+                                 distinct(study_id, timepoint))
+    }
+  }
+}
+for (nm in names(sources)) id_audit_line(sources[[nm]], nm)
+```
+
+## ID audit across modalities
+
+```{r}
+#| label: id-audit
+log_section("ID audit")
+sets <- build_id_source_sets(sources)
+fmt <- id_format_inventory(sets)
+readr::write_csv(fmt, file.path(validation_dir, paste0(stem, "_modality_id_formats.csv")))
+if (dplyr::n_distinct(fmt$len_min) > 1 || dplyr::n_distinct(fmt$len_max) > 1) {
+  cat("⚠️ ID length differs between sources; a join will under-match. Fix id_transform in the config.\n")
+}
+fmt
+overlap <- id_overlap_summary(sets)
+only <- id_only_in_each(sets)
+readr::write_csv(only, file.path(validation_dir, paste0(stem, "_modality_id_only_in_each.csv")))
+cat("• ", nrow(only), " ID(s) appear in exactly one source; adjudicate each\n", sep = "")
+overlap
+```
+
+## The participant × timepoint index
+
+```{r}
+#| label: index
+#| fig-width: 10
+#| fig-height: 6
+log_section("Index")
+index <- tidyr::expand_grid(study_id = sort(unique(roster$study_id)), timepoint = sched$timepoint)
+cov_list <- list()
+for (m in intersect(modalities, names(obs))) {
+  o <- obs[[m]] |> mutate(study_id = as.character(study_id), timepoint = as.character(timepoint), .obs = TRUE)
+  index <- index |> left_join(o |> distinct(study_id, timepoint, .obs), by = c("study_id", "timepoint")) |>
+    mutate(!!paste0("has_", m) := coalesce(.obs, FALSE)) |> select(-.obs)
+  cov_list[[m]] <- timepoint_coverage(obs[[m]], "study_id", "timepoint", config, modality = m,
+                                      expected_ids = roster$study_id)
+}
+index <- index |> mutate(timepoint = factor(timepoint, levels = sched$timepoint)) |> arrange(study_id, timepoint)
+assert_expected_n(index, dplyr::n_distinct(roster$study_id), id_col = "study_id", label = "index build")
+write_versioned_rds(index, paste0(stem, "_multimodal_index"), derived_dir)
+write_latest_rds(index, paste0(stem, "_multimodal_index"), derived_dir)
+cat("✓ Wrote ", stem, "_multimodal_index_latest.rds (", nrow(index), " rows)\n", sep = "")
+
+dash <- modality_coverage_dashboard(lapply(cov_list, timepoint_coverage_summary))
+readr::write_csv(dash, file.path(validation_dir, paste0(stem, "_modality_coverage.csv")))
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  p <- plot_coverage_dashboard(dash)
+  ggplot2::ggsave(file.path(figures_dir, paste0(stem, "_modality_coverage.png")), p, width = 10, height = 3.5, dpi = 120)
+  print(p)
+  print(plot_timepoint_completeness(bind_rows(cov_list)))
+}
+dash
+```
+
+## Linked analysis table
+
+```{r}
+#| label: link
+log_section("Link")
+linked <- index
+if (!is.null(eeg)) {
+  linked <- linked |> left_join(eeg |> mutate(timepoint = factor(timepoint, levels = sched$timepoint)),
+                                by = c("study_id", "timepoint"))
+}
+if ("sensors" %in% modalities) {
+  for (sk in names(config$sensors$streams)) {
+    d <- latest(paste0("sensor_", sk, "_day_valid"))
+    if (is.null(d) || !"timepoint" %in% names(d)) next
+    metrics <- names(config$sensors$streams[[sk]]$metrics)
+    agg <- d |> filter(valid_day, !is.na(timepoint)) |>
+      summarise(across(all_of(metrics), ~ mean(.x, na.rm = TRUE)), n_valid_days = n(),
+                .by = c(study_id, timepoint)) |>
+      rename_with(~ paste0(sk, "_", .x), -c(study_id, timepoint)) |>
+      mutate(timepoint = factor(timepoint, levels = sched$timepoint))
+    linked <- linked |> left_join(agg, by = c("study_id", "timepoint"))
+  }
+}
+assert_expected_n(linked, nrow(index), id_col = NULL, label = "modality joins (rows)")
+write_versioned_rds(linked, paste0(stem, "_multimodal_linked"), derived_dir)
+write_latest_rds(linked, paste0(stem, "_multimodal_linked"), derived_dir)
+cat("✓ Wrote ", stem, "_multimodal_linked_latest.rds: ", ncol(linked), " columns\n", sep = "")
+```
+
+## What happens next
+
+07c runs the full UpSet audit on the same sources; 08 and 10 read
+`<stem>_multimodal_linked_latest.rds`. Approve this stage when the ID format
+table shows one length and one shape across sources, the only-in-each list is
+one you can account for participant by participant, and the coverage
+dashboard shows the pattern you expect from the study's calendar.
+
+```{r}
+#| label: record
+builder_record_render("07m_link_modalities")
+```

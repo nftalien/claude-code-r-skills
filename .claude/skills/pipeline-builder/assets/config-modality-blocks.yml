@@ -1,0 +1,108 @@
+# ════════════════════════════════════════════════════════════════════════
+# Modality blocks for _config.yml  (fearlabr >= 0.2.0, pipeline-builder)
+# ════════════════════════════════════════════════════════════════════════
+# Splice the blocks the study needs into its _config.yml alongside the
+# existing study / redcap / instruments / metricwire / paths / exclusions /
+# deid blocks. Every value here is a study fact and belongs in config, not
+# in a notebook. Fields marked (REQUIRED) must be filled before the stage
+# that reads them is generated; the builder interview asks for each.
+# ════════════════════════════════════════════════════════════════════════
+
+# ── Timepoints (REQUIRED for every study) ───────────────────────────────
+# One declaration every modality is checked against. Offsets are days from
+# the anchor; windows are inclusive day ranges around the offset and may not
+# overlap. `modalities` lists what is EXPECTED at that timepoint; a modality
+# left off is not counted as missing there. Known keys: redcap, ema, eeg, sensors.
+timepoints:
+  anchor: baseline                          # schedule key whose date anchors offsets
+  anchor_date_column: "{{ANCHOR_DATE_FIELD}}"  # REDCap field holding each participant's anchor date
+  schedule:
+    baseline: {label: "Baseline", offset_days: 0,  window_days: [-7, 7],
+               redcap_event: "baseline_arm_1", modalities: [redcap, ema, eeg, sensors]}
+    week4:    {label: "Week 4",   offset_days: 28, window_days: [-3, 7],
+               redcap_event: "week_4_arm_1",   modalities: [redcap, ema, sensors]}
+    week12:   {label: "Week 12",  offset_days: 84, window_days: [-7, 14],
+               redcap_event: "week_12_arm_1",  modalities: [redcap, eeg]}
+
+# ── EEG / ERP (optional) ────────────────────────────────────────────────
+# Preprocessed feature tables only. Filtering, epoching, artifact rejection
+# and averaging happen in MNE / EEGLAB / ERPLAB / BrainVision Analyzer; the
+# export is one row per participant x session x channel x condition x measure.
+eeg:
+  enabled: false
+  format: long                              # the only format in 0.2.0
+  file_glob: "eeg/*_features.csv"           # under paths.raw_data; * matches the export batch
+  columns:                                  # canonical: export column name (REQUIRED)
+    id: subject
+    session: session
+    channel: channel
+    condition: condition
+    measure: measure
+    value: value
+    n_trials: n_trials                      # optional; QC trial floor needs it
+  id_transform: {strip_prefix: "sub-", pad_width: 4}   # BIDS sub-0012 -> 0012
+  id_pattern: "^[0-9]{4}$"                  # the study's ID format, same as REDCap
+  session_map:                              # export session label -> timepoint key (REQUIRED)
+    "ses-01": baseline
+    "ses-02": week12
+  features:                                 # what the analysis plan names (REQUIRED, >= 1)
+    - {name: ern, measure: mean_amplitude, condition: error,   channels: [FCz, Cz], window_ms: [0, 100]}
+    - {name: crn, measure: mean_amplitude, condition: correct, channels: [FCz, Cz], window_ms: [0, 100]}
+  qc:
+    min_trials: 6                           # per participant x session; below this flags low_trials
+    amplitude_range_uv: [-50, 50]           # values outside flag amplitude_oob
+    required_channels: [FCz, Cz]            # absent channel flags missing_channels
+  recording:                                # from .vhdr / *_eeg.json via derive_modality_config.R;
+    sampling_rate_hz: 500                   # read by the methods section and the reporting review,
+    n_channels: 32                          # never computed on. One source of truth.
+    reference: "common (unnamed in header)"
+    unit: "µV"
+    hardware_filters: {low_cutoff_s: 10, high_cutoff_hz: 1000, notch_hz: "Off"}
+    amplifier: "BrainAmp DC amplifier"
+    powerline_hz: 60
+    source: "BrainVision header sub-001_ses-01_task-flanker_eeg.vhdr"
+
+# ── Passive sensors / actigraphy (optional) ─────────────────────────────
+# One entry per stream. Day grain: one row per participant-day in the export.
+# Epoch grain: many rows per day with a timestamp; aggregated to day here.
+sensors:
+  enabled: false
+  tz: "America/New_York"                    # local date for epoch timestamps
+  streams:
+    accel:
+      label: "Wrist actigraphy (daily summary)"
+      file_glob: "sensor/*_accel_daily.csv"
+      grain: day                            # day | epoch
+      columns: {id: participant_id, date: date}          # epoch grain: {id: ..., timestamp: ...}
+      metrics: {steps: step_count, wear_minutes: wear_min}  # canonical: export (REQUIRED)
+      valid_day_rule: "wear_minutes >= 600" # the study's rule, printed in 02s (REQUIRED)
+      id_transform: {pad_width: 4}
+      id_pattern: "^[0-9]{4}$"
+      device:                               # from the vendor preamble via derive_modality_config.R
+        vendor: ActiGraph
+        serials: [MOS2D0001, MOS2D0002]
+        epoch_seconds: 60
+        software: "Data File Created By ActiGraph wGT3X-BT ActiLife v6.13.4"
+    sleep:
+      label: "Sleep summary"
+      file_glob: "sensor/*_sleep.csv"
+      grain: day
+      columns: {id: participant_id, date: night_of}
+      metrics: {sleep_minutes: total_sleep_time, efficiency: sleep_efficiency}
+      valid_day_rule: "sleep_minutes > 0"
+      id_transform: {pad_width: 4}
+      id_pattern: "^[0-9]{4}$"
+    # hr:
+    #   label: "Heart rate epochs"
+    #   file_glob: "sensor/*_hr.csv"
+    #   grain: epoch
+    #   columns: {id: pid, timestamp: ts}
+    #   metrics: {hr: bpm, wear_minutes: wear}
+    #   aggregate: {hr: mean, wear_minutes: sum}     # epoch -> day; sum | mean | max | min
+    #   valid_day_rule: "wear_minutes >= 600"
+    #   id_transform: {pad_width: 4}
+    #   id_pattern: "^[0-9]{4}$"
+
+# ── Builder paths (add to the existing paths block) ─────────────────────
+# paths:
+#   renders: "output/renders"               # one HTML per rendered stage

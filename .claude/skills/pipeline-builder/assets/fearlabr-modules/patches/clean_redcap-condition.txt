@@ -1,0 +1,55 @@
+  # ── Assigned condition ────────────────────────────────────────────────
+  # `condition` is a RESERVED output name: everything downstream (analysis_wide,
+  # the modelling stages, the parity checks) reads it as the randomised arm.
+  #
+  # Two things can go wrong, and both used to surface as a baffling error much
+  # later ("Element `condition` doesn't exist" inside an unrelated select()):
+  #
+  #   1. The REDCap project has its OWN field called `condition` — fidelity
+  #      checklists commonly do. The left_join below would then produce
+  #      `condition.x` / `condition.y` and no bare `condition` at all.
+  #   2. The randomisation field is missing from the export (wrong name in
+  #      _config.yml, or its form was not pulled), so `condition` was never
+  #      created in the first place.
+  #
+  # Handle both here, loudly, at the point where the problem actually is.
+  rand_field <- config$redcap$randomization_field
+
+  if ("condition" %in% names(scored)) {
+    cat("⚠️  the REDCap export already has a column named 'condition'",
+        " (a study field, not the randomised arm)\n",
+        "   → renamed to 'condition_redcap_raw'; 'condition' now holds the",
+        " assigned arm\n", sep = "")
+    scored <- scored %>% rename(condition_redcap_raw = "condition")
+  }
+
+  if (!is.null(rand_field) && rand_field %in% names(scored)) {
+    rand <- scored %>%
+      select(all_of(c(id_col, rand_field))) %>%
+      filter(!is.na(.data[[rand_field]])) %>%
+      distinct() %>%
+      rename(redcap_value = !!rand_field) %>%
+      mutate(redcap_value = as.integer(redcap_value)) %>%
+      left_join(cond_lookup, by = "redcap_value") %>%
+      select(-redcap_value)
+
+    dup_ids <- rand[[id_col]][duplicated(rand[[id_col]])]
+    if (length(dup_ids) > 0) {
+      stop("Randomisation field '", rand_field, "' gives more than one value for ",
+           length(unique(dup_ids)), " participant(s): ",
+           paste(unique(dup_ids), collapse = ", "),
+           ". Fix the REDCap record before cleaning.", call. = FALSE)
+    }
+
+    scored <- scored %>% left_join(rand, by = id_col)
+
+    n_arm <- sum(!is.na(scored$condition[!duplicated(scored[[id_col]])]))
+    cat("✓ condition mapped from '", rand_field, "': ", n_arm, " of ",
+        dplyr::n_distinct(scored[[id_col]]), " participant(s) randomised\n", sep = "")
+  } else {
+    cat("⚠️  randomisation field '", rand_field %||% "<not set>",
+        "' is not in the export — 'condition' will be NA for everyone.\n",
+        "   Check redcap$randomization_field in _config.yml and that its form",
+        " is in redcap$forms_to_pull.\n", sep = "")
+    scored$condition <- NA_character_
+  }
