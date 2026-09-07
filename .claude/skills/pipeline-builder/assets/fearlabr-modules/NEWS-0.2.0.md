@@ -102,6 +102,16 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   randomisation values for one participant is an error where it happens.
   The patch is anchor-based and idempotent, and stops rather than
   half-applying if `clean_redcap()` changes shape upstream.
+* `R/scoring_thresholds.R`: `check_scoring_thresholds()` verifies every
+  instrument's `minimum_valid_items` against `ceiling(prop × n_items)` (prop
+  from `validation$min_valid_prop`, default 0.8) and stops, naming the
+  instrument and both numbers, when one has drifted. Rounding up is the rule,
+  not an artefact: a participant may miss one item only when the remainder
+  still clears the proportion, so a 4-item scale requires all four (3 of 4 is
+  75%). The derivation already wrote thresholds this way; a config is a text
+  file people edit by hand, and a threshold quietly loosened in one instrument
+  is invisible in a render. Subscales take `sub$minimum_valid_items` when
+  declared, otherwise the same rule.
 * Mean scoring: `score_scale_row()` gains `method = "mean"`, the mean of the
   available items on the item scale, for instruments whose author scores them
   that way (the Brief Aggression Questionnaire is scored 1-7). Subscales

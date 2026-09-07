@@ -117,6 +117,10 @@ if (any(grepl('method == "mean"', cr3, fixed = TRUE))) {
          "the mean-scoring patch.")
   }
   cr3[j] <- '        method          = sub$score_method %||% instr_cfg$score_method %||% "prorated_sum"'
+  k <- grep('^        min_valid_items = ceiling\\(0.8 \\* length\\(sub\\$items\\)\\),$', cr3)
+  if (length(k) == 1) {
+    cr3[k] <- '        min_valid_items = sub$minimum_valid_items %||% ceiling(0.8 * length(sub$items)),'
+  }
   cr3 <- append(cr3, c(
     '  } else if (method == "mean") {',
     '    # Mean of the available items. Proration is meaningless here: the mean',
