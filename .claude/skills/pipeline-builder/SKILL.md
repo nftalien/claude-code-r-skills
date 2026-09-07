@@ -254,10 +254,12 @@ Repeat until `next_stage(m)` is `NULL`:
    - **Every `knitr::kable()` is the last expression in its block.** knitr
      auto-prints the visible value of each top-level expression, so
      `if (nrow(x)) { kable(x); write_csv(x, f) }` writes the file and shows
-     nothing: the block's value is `write_csv`'s invisible return. Wrap it as
-     `print(knitr::kable(x))` or put it last. This is silent -- the render
-     succeeds and the table the verification gate asks for simply is not
-     there.
+     nothing: the block's value is `write_csv`'s invisible return. Put the
+     `kable()` last in the branch (`{ write_csv(x, f); kable(x) }`) so the
+     `if` returns it. Do NOT reach for `print(knitr::kable(x))` -- that prints
+     the markdown source into the output block as verbatim text instead of
+     rendering a table. Both failures are silent: the render succeeds either
+     way, and the table the verification gate asks for is missing or ugly.
    - **Every `config$...` the stage reads actually exists.** Grep the
      generated stage for `config\$[a-z_]*\$[a-z_0-9]*` and check each one
      against `_config.yml`; the derivation proposes what the source systems
