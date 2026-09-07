@@ -102,6 +102,31 @@ if (any(grepl("rev_declared", cr2, fixed = TRUE))) {
   cat("✓ clean_redcap.R: reverse_coded honoured\n")
 }
 
+# 1b3. Patch R/clean_redcap.R for mean scoring. Some instruments are scored as
+#      the mean of their items rather than a sum (the Brief Aggression
+#      Questionnaire is scored 1-7 by its author), and subscales hard-coded
+#      "prorated_sum" so they could not follow their instrument.
+cr3 <- readLines(cr_path)
+if (any(grepl('method == "mean"', cr3, fixed = TRUE))) {
+  cat("• clean_redcap.R already supports mean scoring\n")
+} else {
+  i <- grep('^  \\} else if \\(method == "raw_sum"\\) \\{$', cr3)
+  j <- grep('^        method          = "prorated_sum"$', cr3)
+  if (length(i) != 1 || length(j) != 1) {
+    stop("Cannot locate the scoring-method blocks in R/clean_redcap.R; re-cut ",
+         "the mean-scoring patch.")
+  }
+  cr3[j] <- '        method          = sub$score_method %||% instr_cfg$score_method %||% "prorated_sum"'
+  cr3 <- append(cr3, c(
+    '  } else if (method == "mean") {',
+    '    # Mean of the available items. Proration is meaningless here: the mean',
+    '    # of what was answered already is the score, on the item scale.',
+    '    score[ok] <- rowMeans(M[ok, , drop = FALSE], na.rm = TRUE)'
+  ), after = i - 1L)
+  writeLines(cr3, cr_path)
+  cat("✓ clean_redcap.R: mean scoring added; subscales follow their instrument\n")
+}
+
 # 1c. Patch R/structural_skips.R so a rule's trigger_op is honoured. Without it
 #     the operator is decorative and every rule is applied as "==", which
 #     inverts every rule derived from REDCap branching logic.

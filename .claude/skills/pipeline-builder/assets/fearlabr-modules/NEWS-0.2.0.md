@@ -102,6 +102,12 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   randomisation values for one participant is an error where it happens.
   The patch is anchor-based and idempotent, and stops rather than
   half-applying if `clean_redcap()` changes shape upstream.
+* Mean scoring: `score_scale_row()` gains `method = "mean"`, the mean of the
+  available items on the item scale, for instruments whose author scores them
+  that way (the Brief Aggression Questionnaire is scored 1-7). Subscales
+  previously hard-coded `prorated_sum` and so could not follow their
+  instrument; they now take `sub$score_method`, then the instrument's, then
+  `prorated_sum` as before.
 * `patches/clean_redcap-reverse_coded.txt`: every derived REDCap instrument
   block carries a `reverse_coded` list, and `score_instrument()` read none of
   them -- it summed raw item values, so a positively-worded item counted as

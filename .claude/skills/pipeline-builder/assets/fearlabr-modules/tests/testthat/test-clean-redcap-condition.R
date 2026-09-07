@@ -129,3 +129,54 @@ test_that("reversal keeps out-of-range values detectable", {
   out <- clean_redcap(dat, rc_rev_config())
   expect_true(any(out$assessment_level$pss_n_items_oob > 0))
 })
+
+# ── mean scoring ──────────────────────────────────────────────────────────
+# Some instruments are scored as the mean of their items, on the item scale
+# (the Brief Aggression Questionnaire is scored 1-7 by its author).
+
+crc_mean_config <- function() {
+  cfg <- crc_config()
+  cfg$instruments <- list(
+    baq = list(
+      items_in_order      = c("q1", "q2"),
+      item_range          = c(1, 7),
+      total_range         = c(1, 7),
+      minimum_valid_items = 1L,
+      score_method        = "mean",
+      reverse_coded       = "q1",
+      subscales           = list(pair = list(items = c("q1", "q2")))
+    )
+  )
+  cfg
+}
+
+test_that("score_method 'mean' scores on the item scale", {
+  dat <- crc_data(); dat$q1 <- 2L; dat$q2 <- 5L   # reversed q1 = 1+7-2 = 6
+  out <- clean_redcap(dat, crc_mean_config())
+  expect_true(all(out$assessment_level$baq_total == 5.5))
+  expect_true(all(out$assessment_level$baq_total_in_range))
+})
+
+test_that("a subscale follows its instrument's score_method", {
+  dat <- crc_data(); dat$q1 <- 2L; dat$q2 <- 5L
+  out <- clean_redcap(dat, crc_mean_config())
+  # prorated_sum would give 11 here; the mean is 5.5
+  expect_true(all(out$assessment_level$baq_pair == 5.5))
+})
+
+test_that("a subscale can override its instrument's score_method", {
+  cfg <- crc_mean_config()
+  cfg$instruments$baq$subscales$pair$score_method <- "raw_sum"
+  dat <- crc_data(); dat$q1 <- 2L; dat$q2 <- 5L
+  out <- clean_redcap(dat, cfg)
+  expect_true(all(out$assessment_level$baq_pair == 11))
+  expect_true(all(out$assessment_level$baq_total == 5.5))
+})
+
+test_that("subscales still default to prorated_sum", {
+  cfg <- crc_config()
+  cfg$instruments$demo$subscales <- list(pair = list(items = c("q1", "q2")))
+  dat <- crc_data()                              # q1 = 3, q2 = 4
+  out <- clean_redcap(dat, cfg)
+  expect_true(all(out$assessment_level$demo_pair == 7))
+})
