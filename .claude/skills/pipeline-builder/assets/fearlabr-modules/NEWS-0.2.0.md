@@ -127,6 +127,14 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   previously hard-coded `prorated_sum` and so could not follow their
   instrument; they now take `sub$score_method`, then the instrument's, then
   `prorated_sum` as before.
+* Item value recodes: an instrument block may carry a `recode` map naming
+  stored values and the values they should score as, applied before reversal
+  and the range check so both see the measure's scale (the raw column survives
+  into the exports). The DUDIT scores its last two items 0/2/4 and one project
+  coded them 0/2/3, so every endorsement of the top option quietly lost a
+  point -- and matched REDCap's own calc field, which sums the same miscoded
+  values. A recode naming a field that is not one of the instrument's items,
+  or a non-numeric map, stops.
 * `patches/clean_redcap-reverse_coded.txt`: every derived REDCap instrument
   block carries a `reverse_coded` list, and `score_instrument()` read none of
   them -- it summed raw item values, so a positively-worded item counted as

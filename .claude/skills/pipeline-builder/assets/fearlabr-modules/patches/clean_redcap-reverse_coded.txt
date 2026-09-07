@@ -1,5 +1,43 @@
   out <- df
 
+  # ── Item value recodes ────────────────────────────────────────────────
+  # A response option stored in REDCap at a value the measure does not use.
+  # The DUDIT scores its last two items 0/2/4 and one project coded them
+  # 0/2/3, so every endorsement of the top option lost a point -- invisible,
+  # because the total still looked plausible and still matched REDCap's own
+  # calc field, which sums the same miscoded values.
+  #
+  # Applied to the scoring copy first, so reversal and the range check both
+  # see the measure's values; `out` keeps the raw column, because the export
+  # should show what REDCap actually holds.
+  recodes <- instr_cfg$recode
+  if (!is.null(recodes) && length(recodes) > 0) {
+    for (v in names(recodes)) {
+      if (!v %in% instr_cfg$items_in_order) {
+        stop("Instrument '", instr_name, "' recodes '", v, "', which is not one ",
+             "of its items_in_order.", call. = FALSE)
+      }
+      if (!v %in% names(df)) {
+        cat("  ⚠️  ", instr_name, ": recode declared for ", v,
+            ", which is not in the export\n", sep = "")
+        next
+      }
+      map  <- recodes[[v]]
+      from <- suppressWarnings(as.numeric(names(map)))
+      to   <- suppressWarnings(as.numeric(unlist(map, use.names = FALSE)))
+      if (length(from) == 0 || anyNA(from) || anyNA(to) || length(from) != length(to)) {
+        stop("Instrument '", instr_name, "': recode for '", v, "' must map numeric ",
+             "stored values to numeric scored values.", call. = FALSE)
+      }
+      x   <- suppressWarnings(as.numeric(as.character(df[[v]])))
+      hit <- match(x, from)
+      df[[v]] <- ifelse(is.na(hit), x, to[hit])
+      cat("  ⇄ ", instr_name, ": recoded ", v, " (",
+          paste(from, "\u2192", to, collapse = ", "), "), ",
+          sum(!is.na(hit)), " value(s) changed\n", sep = "")
+    }
+  }
+
   # ── Reverse-coded items ───────────────────────────────────────────────
   # `reverse_coded` has been written into every REDCap instrument block since
   # the config derivation was added, and was read by nothing: the scorer summed

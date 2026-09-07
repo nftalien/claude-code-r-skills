@@ -180,3 +180,57 @@ test_that("subscales still default to prorated_sum", {
   out <- clean_redcap(dat, cfg)
   expect_true(all(out$assessment_level$demo_pair == 7))
 })
+
+# ── item value recodes ────────────────────────────────────────────────────
+# A response option stored at a value the measure does not use. The DUDIT
+# scores its last two items 0/2/4; one project coded them 0/2/3.
+
+crc_recode_config <- function(recode = list(q2 = list(`3` = 4))) {
+  cfg <- crc_config()
+  cfg$instruments <- list(
+    dudit = list(
+      items_in_order      = c("q1", "q2"),
+      item_range          = c(0, 4),
+      total_range         = c(0, 8),
+      minimum_valid_items = 1L,
+      score_method        = "raw_sum",
+      recode              = recode
+    )
+  )
+  cfg
+}
+
+test_that("a declared value is recoded before scoring", {
+  dat <- crc_data(); dat$q1 <- 0L; dat$q2 <- 3L      # 3 scores as 4
+  expect_output(out <- clean_redcap(dat, crc_recode_config()), "recoded q2")
+  expect_true(all(out$assessment_level$dudit_total == 4))
+  expect_true(all(out$assessment_level$q2 == 3L))    # raw column untouched
+})
+
+test_that("values outside the map are left alone", {
+  dat <- crc_data(); dat$q1 <- 0L; dat$q2 <- c(0L, 2L, 3L, NA)
+  out <- suppressMessages(clean_redcap(dat, crc_recode_config()))
+  # 0 and 2 are not in the map and pass through; 3 becomes 4; the NA row still
+  # scores, from q1 alone, because minimum_valid_items is 1.
+  expect_equal(sort(out$assessment_level$dudit_total), c(0, 0, 2, 4))
+})
+
+test_that("recode runs before reversal, so reversal pivots on the real value", {
+  cfg <- crc_recode_config()
+  cfg$instruments$dudit$reverse_coded <- "q2"        # 0 + 4 - 4 = 0, not 0+4-3 = 1
+  dat <- crc_data(); dat$q1 <- 0L; dat$q2 <- 3L
+  out <- suppressMessages(clean_redcap(dat, cfg))
+  expect_true(all(out$assessment_level$dudit_total == 0))
+})
+
+test_that("a recode naming a non-item stops", {
+  dat <- crc_data(); dat$q1 <- 0L; dat$q2 <- 3L
+  expect_error(clean_redcap(dat, crc_recode_config(list(q9 = list(`3` = 4)))),
+               "not one of its items_in_order")
+})
+
+test_that("a non-numeric recode map stops", {
+  dat <- crc_data(); dat$q1 <- 0L; dat$q2 <- 3L
+  expect_error(clean_redcap(dat, crc_recode_config(list(q2 = list(yes = 4)))),
+               "must map numeric")
+})
