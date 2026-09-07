@@ -230,3 +230,47 @@ test_that("scored_forms keeps a yes/no form the study declares scored", {
   expect_equal(kept$instruments$ptsdpc5$n_items, 5L); expect_equal(kept$instruments$ptsdpc5$item_range, c(0L, 1L))
   expect_true(any(kept$todo$key == "ptsdpc5" & kept$todo$status == "derived" & grepl("scored_forms", kept$todo$note)))
 })
+
+test_that("a total calc that sums items the instrument excluded raises an ask", {
+  # The DUDIT shape: 9 items coded 0-4, 2 coded 0/2/3, one calc summing all 11.
+  # The excluded pair used to vanish inside an intersect(), so the total looked
+  # like a clean 9-of-9 match while REDCap was summing eleven.
+  md <- tibble::tibble(
+    field_name = c("record_id", paste0("d_", 1:9), "d_10", "d_11", "d_score"),
+    form_name = c("dudit", rep("dudit", 11), "dudit"),
+    field_type = c("text", rep("radio", 11), "calc"),
+    field_label = field_name,
+    select_choices_or_calculations = c(
+      NA,
+      rep("0, Never | 1, Rarely | 2, Sometimes | 3, Often | 4, Daily", 9),
+      rep("0, No | 2, Not this year | 3, This year", 2),
+      paste0("[", paste0("d_", 1:11), "]", collapse = "+")),
+    text_validation_type_or_show_slider_number = NA_character_,
+    text_validation_min = NA_character_, text_validation_max = NA_character_,
+    identifier = NA_character_, branching_logic = NA_character_)
+
+  res <- redcap_derive_instruments(md, id_column = "record_id")
+  d <- res$instruments$dudit
+  expect_equal(length(d$items_in_order), 9L)
+  expect_equal(d$redcap_total_calc, "d_score")
+  ask <- res$todo[res$todo$key == "dudit.items_in_order" & res$todo$status == "ask", ]
+  expect_equal(nrow(ask), 1L)
+  expect_match(ask$note, "d_10, d_11")
+  expect_match(ask$note, "may genuinely be 11 items long")
+})
+
+test_that("a total calc covering exactly the kept items raises no such ask", {
+  md <- tibble::tibble(
+    field_name = c("record_id", paste0("a_", 1:5), "a_score"),
+    form_name = "audit", field_type = c("text", rep("radio", 5), "calc"),
+    field_label = field_name,
+    select_choices_or_calculations = c(
+      NA, rep("0, Never | 1, Rarely | 2, Sometimes | 3, Often | 4, Daily", 5),
+      paste0("[", paste0("a_", 1:5), "]", collapse = "+")),
+    text_validation_type_or_show_slider_number = NA_character_,
+    text_validation_min = NA_character_, text_validation_max = NA_character_,
+    identifier = NA_character_, branching_logic = NA_character_)
+  res <- redcap_derive_instruments(md, id_column = "record_id")
+  expect_equal(res$instruments$audit$redcap_total_calc, "a_score")
+  expect_equal(nrow(res$todo[res$todo$key == "audit.items_in_order", ]), 0L)
+})

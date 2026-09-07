@@ -317,10 +317,28 @@ redcap_derive_instruments <- function(metadata, instruments_tbl = NULL, id_colum
     calcs <- metadata[metadata$form_name == form & tolower(metadata$field_type) == "calc", ]
     total <- NULL; subs <- list()
     for (i in seq_len(nrow(calcs))) {
-      refs <- intersect(redcap_calc_fields(calcs$select_choices_or_calculations[i]), keep$field_name)
+      # Restrict to this form first, THEN to the items kept. Intersecting
+      # straight to keep$field_name hides the case that matters: a calc that
+      # sums items the instrument excluded because they carry a different
+      # response range. The DUDIT is 11 items, its last two coded 0/2/3 rather
+      # than 0-4, so they are dropped from the item group -- and the total then
+      # looked like a clean 9-of-9 match while REDCap was summing all eleven.
+      form_fields <- metadata$field_name[metadata$form_name == form]
+      all_refs <- intersect(redcap_calc_fields(calcs$select_choices_or_calculations[i]), form_fields)
+      refs <- intersect(all_refs, keep$field_name)
+      beyond <- setdiff(all_refs, keep$field_name)
       cname <- calcs$field_name[i]
       if (length(refs) == n && is.null(total)) {
         total <- cname
+        if (length(beyond) > 0) {
+          todo[[length(todo) + 1]] <- tibble::tibble(
+            section = "instruments", key = paste0(ikey, ".items_in_order"), status = "ask",
+            note = paste0(cname, " also sums ", length(beyond), " field(s) this instrument excludes: ",
+                          paste(beyond, collapse = ", "),
+                          ". They were dropped for having a different response range, but the scale may genuinely be ",
+                          n + length(beyond), " items long. Every cross-check against ", cname,
+                          " will differ for anyone who answered them."))
+        }
       } else if (length(refs) >= 2) {
         sname <- slug(cname)
         for (pre in unique(c(ikey, stem))) if (nzchar(pre)) sname <- sub(paste0("^", pre, "_?"), "", sname)

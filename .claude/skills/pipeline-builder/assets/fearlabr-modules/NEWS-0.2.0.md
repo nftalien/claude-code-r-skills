@@ -102,6 +102,15 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   randomisation values for one participant is an error where it happens.
   The patch is anchor-based and idempotent, and stops rather than
   half-applying if `clean_redcap()` changes shape upstream.
+* `redcap_derive_instruments()`: a total calc field was matched by
+  intersecting its references down to the items already kept, which hid the
+  one case that matters -- a calc that sums items the instrument excluded for
+  carrying a different response range. The DUDIT is 11 items with the last two
+  coded 0/2/3 rather than 0-4, so the pair was dropped from the item group and
+  the total then looked like a clean 9-of-9 match while REDCap summed all
+  eleven. References are now resolved against the whole form first, and a
+  total that reaches beyond the kept items is linked with an `ask` naming them
+  and the length the scale may really be.
 * `R/scoring_thresholds.R`: `check_scoring_thresholds()` verifies every
   instrument's `minimum_valid_items` against `ceiling(prop × n_items)` (prop
   from `validation$min_valid_prop`, default 0.8) and stops, naming the
