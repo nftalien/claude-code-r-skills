@@ -33,7 +33,9 @@ test_that("next_stage walks the DAG and resetting upstream invalidates downstrea
   m <- new_pipeline_manifest(builder_test_config(), include_analysis = FALSE)
   expect_equal(next_stage(m), "00_setup")
   m <- mark_stage(m, "00_setup", "rendered") |> mark_stage("00_setup", "approved")
-  expect_equal(next_stage(m), "00b_pipeline_status")
+  # 00b_pipeline_status is also ready here, but it renders the manifest itself
+  # and gates nothing, so the nomination goes to the stage that does.
+  expect_equal(next_stage(m), "01_ingest")
   m <- mark_stage(m, "01_ingest", "rendered") |> mark_stage("01_ingest", "approved")
   m <- mark_stage(m, "02_validate", "rendered") |> mark_stage("02_validate", "approved")
   m <- mark_stage(m, "00_setup", "planned", note = "config changed")
@@ -79,7 +81,7 @@ test_that("notebook helpers gate, record and approve through _pipeline.yml", {
   expect_output(builder_record_render("00_setup", manifest_path = p), "marked rendered")
   expect_equal(manifest_stages_tbl(read_pipeline_manifest(p))$render[1], "output/renders/00_setup.html")
   expect_output(builder_approve("00_setup", note = "looked at config echo", manifest_path = p),
-                "Next stage: 00b_pipeline_status")
+                "Next stage: 01_ingest")
   expect_output(builder_stage_gate("01_ingest", manifest_path = p), "ID audit lines")
   # No manifest: the helpers say so and do nothing
   expect_output(builder_stage_gate("00_setup", manifest_path = tempfile()), "skipped")

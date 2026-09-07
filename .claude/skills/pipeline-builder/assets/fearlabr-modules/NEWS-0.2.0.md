@@ -111,6 +111,12 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   eleven. References are now resolved against the whole form first, and a
   total that reaches beyond the kept items is linked with an `ask` naming them
   and the length the scale may really be.
+* `next_stage()` steps over advisory stages. `00b_pipeline_status` renders the
+  manifest itself: nothing depends on it, there is no study artifact in it to
+  verify, and it is re-rendered as the build moves -- so it was nominated as
+  "next" ahead of the real next stage, and would be again after every
+  re-render. The registry gains a `gating` column (FALSE only for that stage);
+  advisory stages are nominated only once nothing gating is left.
 * `R/scoring_thresholds.R`: `check_scoring_thresholds()` verifies every
   instrument's `minimum_valid_items` against `ceiling(prop × n_items)` (prop
   from `validation$min_valid_prop`, default 0.8) and stops, naming the

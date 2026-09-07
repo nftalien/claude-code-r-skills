@@ -27,44 +27,48 @@ stage_status_levels <- function() c("planned", "generated", "rendered", "approve
 #' the status table and the DAG all derive from this.
 builder_stage_registry <- function() {
   tibble::tribble(
+    # `gating` is FALSE for a stage whose content is derived from the manifest
+    # rather than from data. There is nothing in it to verify against a study
+    # artifact, and it is re-rendered as the build progresses, so approving it
+    # is a formality that comes back every time. next_stage() steps over these.
     ~id,                    ~label,                    ~modality, ~depends_on,
-    ~verify,
+    ~verify,                                                     ~gating,
     "00_setup",             "Setup",                   "core",    character(0),
-    "config echo; secrets guard; timepoint schedule table",
+    "config echo; secrets guard; timepoint schedule table", TRUE,
     "00b_pipeline_status",  "Pipeline status",         "core",    "00_setup",
-    "DAG and status table match the plan",
+    "DAG and status table match the plan", FALSE,
     "01_ingest",            "Ingest REDCap + EMA",     "redcap",  "00_setup",
-    "ID audit lines; row counts; which export was read",
+    "ID audit lines; row counts; which export was read", TRUE,
     "02_validate",          "Validate",                "redcap",  "01_ingest",
-    "required columns; duplicate keys; dictionary diff",
+    "required columns; duplicate keys; dictionary diff", TRUE,
     "03_clean_redcap",      "Clean + score REDCap",    "redcap",  "02_validate",
-    "calc-field mismatch table; out-of-range table; timepoint completeness",
+    "calc-field mismatch table; out-of-range table; timepoint completeness", TRUE,
     "03b_lock_redcap",      "Analysis sets / lock",    "redcap",  "03_clean_redcap",
-    "CONSORT flow; ITT/mITT/PP counts",
+    "CONSORT flow; ITT/mITT/PP counts", TRUE,
     "04_prepare_ema",       "Prepare EMA",             "ema",     "01_ingest",
-    "canonical name crosswalk; free text diverted",
+    "canonical name crosswalk; free text diverted", TRUE,
     "05_clean_ema",         "Clean EMA",               "ema",     "04_prepare_ema",
-    "compliance heatmap; exclusions log",
+    "compliance heatmap; exclusions log", TRUE,
     "06_score_ema",         "Score EMA",               "ema",     "05_clean_ema",
-    "schema match audit; observed min/max per item",
+    "schema match audit; observed min/max per item", TRUE,
     "07_link_redcap_ema",   "Link REDCap + EMA",       "ema",     c("03_clean_redcap", "06_score_ema"),
-    "linkage audit; only-in-each lists",
+    "linkage audit; only-in-each lists", TRUE,
     "01e_ingest_eeg",       "Ingest EEG features",     "eeg",     "00_setup",
-    "ID audit; session -> timepoint map; unmapped sessions",
+    "ID audit; session -> timepoint map; unmapped sessions", TRUE,
     "02e_qc_eeg",           "EEG QC + features",       "eeg",     "01e_ingest_eeg",
-    "QC tile; feature distributions; flagged participants",
+    "QC tile; feature distributions; flagged participants", TRUE,
     "01s_ingest_sensor",    "Ingest sensor streams",   "sensors", "00_setup",
-    "ID audit per stream; unparseable dates; duplicate days",
+    "ID audit per stream; unparseable dates; duplicate days", TRUE,
     "02s_qc_sensor",        "Sensor coverage",         "sensors", "01s_ingest_sensor",
-    "valid-day rule printed; coverage tile; per-participant table",
+    "valid-day rule printed; coverage tile; per-participant table", TRUE,
     "07m_link_modalities",  "Link modalities",         "multi",   c("03_clean_redcap"),
-    "cross-modality coverage dashboard; only-in-each across modalities",
+    "cross-modality coverage dashboard; only-in-each across modalities", TRUE,
     "07c_id_audit",         "ID audit",                "core",    "07m_link_modalities",
-    "UpSet; format inventory; only-in-each",
+    "UpSet; format inventory; only-in-each", TRUE,
     "08_feasibility",       "Feasibility",             "analysis", "07m_link_modalities",
-    "registry F entries against benchmarks",
+    "registry F entries against benchmarks", TRUE,
     "10_outcomes_models",   "Outcomes models",         "analysis", "08_feasibility",
-    "validation gates; identification table"
+    "validation gates; identification table", TRUE
   )
 }
 
@@ -219,11 +223,19 @@ invalidate_downstream <- function(manifest, id) {
 #' The next stage to work on: first unapproved stage whose deps are approved.
 next_stage <- function(manifest) {
   tbl <- manifest_stages_tbl(manifest)
-  for (i in seq_len(nrow(tbl))) {
-    if (tbl$status[i] == "approved") next
+  reg <- builder_stage_registry()
+  advisory <- tbl$id %in% reg$id[!reg$gating]
+
+  ready <- function(i) {
     deps <- tbl$depends_on[[i]]
-    if (all(tbl$status[match(deps, tbl$id)] == "approved")) return(tbl$id[i])
+    tbl$status[i] != "approved" &&
+      all(tbl$status[match(deps, tbl$id)] == "approved")
   }
+  # Real work first. A stage whose content is derived from the manifest gates
+  # nothing and is re-rendered as the build moves, so nominating it would put
+  # a formality ahead of the next actual stage -- every time.
+  for (i in seq_len(nrow(tbl))) if (!advisory[i] && ready(i)) return(tbl$id[i])
+  for (i in seq_len(nrow(tbl))) if (advisory[i] && ready(i)) return(tbl$id[i])
   NULL
 }
 
