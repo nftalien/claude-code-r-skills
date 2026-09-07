@@ -89,6 +89,19 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   glob, grain and epoch length, columns, metrics, aggregation defaults, a
   valid-day rule with the fraction of days it keeps, the id transform and
   the device block; the time zone is asked unless configured.
+* `patches/clean_redcap-condition.txt`, applied by `apply_modules.R`:
+  `condition` is a reserved output name of `clean_redcap()` — every stage
+  downstream reads it as the randomised arm. A REDCap project with its own
+  field called `condition` (fidelity checklists commonly have one) used to
+  make the join produce `condition.x` / `condition.y`, and a randomisation
+  field missing from the export used to create no `condition` at all; both
+  surfaced pages later as `Element \`condition\` doesn't exist` inside an
+  unrelated `select()`. Now the study's field is renamed to
+  `condition_redcap_raw` with a message, a missing randomisation field gives
+  an all-NA `condition` and says which config key to check, and two
+  randomisation values for one participant is an error where it happens.
+  The patch is anchor-based and idempotent, and stops rather than
+  half-applying if `clean_redcap()` changes shape upstream.
 * `R/quicklook.R`: `summarise_render_log()`, `modality_coverage_dashboard()`
   / `plot_coverage_dashboard()`, `plot_ema_compliance_heatmap()`.
 * `R/synthetic_modalities.R`: `generate_synthetic_eeg()`,
@@ -97,7 +110,7 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   config declares, at the paths the ingest globs read.
 * Tests: `test-timepoints.R`, `test-eeg.R`, `test-sensor.R`,
   `test-manifest.R`, `test-quicklook.R`, `test-synthetic-modalities.R`,
-  `test-redcap-project-config.R`, `test-metricwire-project-config.R`, `test-eeg-project-config.R`, `test-sensor-project-config.R`
+  `test-redcap-project-config.R`, `test-metricwire-project-config.R`, `test-eeg-project-config.R`, `test-sensor-project-config.R`, `test-clean-redcap-condition.R`
   (helper `helper-builder-config.R`).
 * `ggplot2` stays in Suggests; every plot function returns its table with a
   message when ggplot2 is absent.

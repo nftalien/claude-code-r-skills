@@ -37,6 +37,37 @@ n_r <- copy_into("R/*.R", file.path(pkg, "R"))
 n_t <- copy_into("tests/testthat/*.R", file.path(pkg, "tests", "testthat"))
 cat("✓ Copied ", n_r, " R file(s) and ", n_t, " test file(s)\n", sep = "")
 
+# 1b. Patch R/clean_redcap.R so `condition` is always created and never collides
+#     with a study field of the same name. Anchor-based and idempotent: if the
+#     upstream block has changed shape, stop rather than half-apply.
+cr_path <- file.path(pkg, "R", "clean_redcap.R")
+if (!file.exists(cr_path)) {
+  cat("• clean_redcap.R not present — condition patch skipped\n")
+} else {
+  cr <- readLines(cr_path)
+  if (any(grepl("condition_redcap_raw", cr, fixed = TRUE))) {
+    cat("• clean_redcap.R already carries the condition patch\n")
+  } else {
+    start <- grep("^  # Map condition \\(only meaningful at randomization event\\)$", cr)
+    stop_at <- grep("^  # Long, assessment-level", cr)
+    if (length(start) != 1 || length(stop_at) != 1 || stop_at[1] <= start[1]) {
+      stop("Cannot locate the condition block in R/clean_redcap.R. ",
+           "fearlabr has changed upstream; re-cut patches/clean_redcap-condition.txt.")
+    }
+    old <- cr[start:(stop_at - 1L)]
+    if (!any(grepl("randomization_field %in% names(scored)", old, fixed = TRUE)) ||
+        !any(grepl("left_join(rand, by = id_col)", old, fixed = TRUE))) {
+      stop("The condition block in R/clean_redcap.R is not the one this patch ",
+           "was written against. Refusing to patch.")
+    }
+    new <- readLines(file.path(here_dir, "patches", "clean_redcap-condition.txt"))
+    cr <- c(cr[seq_len(start - 1L)], new, "", cr[stop_at:length(cr)])
+    writeLines(cr, cr_path)
+    cat("✓ clean_redcap.R: condition block patched (", length(old),
+        " lines -> ", length(new), ")\n", sep = "")
+  }
+}
+
 # 2. NAMESPACE exports
 ns <- readLines(file.path(pkg, "NAMESPACE"))
 add <- readLines(file.path(here_dir, "NAMESPACE.additions"))
