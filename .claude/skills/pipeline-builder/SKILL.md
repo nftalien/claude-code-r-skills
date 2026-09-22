@@ -346,6 +346,18 @@ Repeat until `next_stage(m)` is `NULL`:
    knitr::opts_chunk$set(error = FALSE)                    # NOT optional -- see below
    setwd("notebooks"); knitr::knit("<id>.qmd", output = "../dryrun.md", envir = globalenv())
    ```
+
+**Model stages (10) in the dry run.** Stan and lme4 are usually absent
+from the build container, and even where present a dozen MCMC fits are
+not a dry run. Keep every fit behind a helper in `R/<study>_outcomes_helpers.R`
+(`fit_bayes()`, `fit_freq()`, `predicted_means()`, `ppc_plot()`,
+`require_model_packages()`) so the notebook only ever touches the tibbles
+they return. The dry-run tree then carries a test double of that file with
+the same function names and return shapes and random numbers; the render
+exercises every chunk, gate, registry record and coverage row without a
+sampler. The real helpers are what the lab machine runs. FARM-TOK's
+`10_outcomes_models.qmd` and its `R/farmtok_outcomes_helpers.R` are the
+worked example.
    `error = FALSE` is the whole point. knitr's default is `error = TRUE`: a
    chunk error is written *into* the document and the knit carries on, so
    the call returns normally and a "knit OK" proves nothing. Quarto renders
