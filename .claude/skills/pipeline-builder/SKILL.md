@@ -243,31 +243,58 @@ Repeat until `next_stage(m)` is `NULL`:
    `{{STUDY_NAME}}` and every other `{{PLACEHOLDER}}`, write to `notebooks/`,
    then `mark_stage(m, id, "generated")` and save the manifest.
 
-   Things to check in every generated stage before handing it over, each of
-   which has cost a real render:
+   Then pre-flight it, before anyone renders anything:
+   ```
+   Rscript scripts/preflight_stage.R <id>
+   ```
+   It is static -- it reads the .qmd and `_config.yml` and runs none of the
+   stage's code, so it needs no data. It exits non-zero and names what to fix.
+   Every check exists because the failure it catches has cost a real render,
+   and they fail in two different ways worth understanding:
+
+   **These waste a round trip with the person running the stage.**
+   - **Every chunk parses.**
+   - **Every `config$...` the stage reads exists.** The derivation proposes
+     what the source systems know, which is not the set the templates read. A
+     missing key is `NULL`, and `NULL * 100` is `numeric(0)`, so a threshold
+     silently becomes empty and every comparison against it returns
+     `logical(0)` — surfacing much later as a recycling error naming an
+     innocent variable. `validation.max_missing_allowed` was the one that bit.
    - **The setup chunk attaches what the body uses.** Several templates load
      only `fearlabr`, which imports dplyr without attaching it, so a body
      using dplyr verbs or `%>%` dies at whichever chunk reaches them first.
-     Add `library(dplyr)` and friends to the setup chunk.
-   - **`embed-resources: true` is in the YAML**, so a render is one
-     self-contained file that can be sent for review.
+   - **No diagnostic is printed in a chunk that then `stop()`s.** A chunk that
+     stops produces no document, so Quarto discards everything the chunk
+     printed first — the error string is the only text that escapes. A gate
+     that `cat()`s its evidence and then stops names the problem and shows
+     none of it. Put the diagnostics in an earlier chunk that finishes (the
+     `-diagnose` / `-gate` pair), or inside the `stop()` message. The check
+     walks the parse tree, so a print and a stop in sibling `if`/`else`
+     branches are correctly left alone.
+
+   **These SUCCEED and quietly omit what the verification gate asks to look
+   at, which is worse — the render looks fine.**
    - **Every `knitr::kable()` is the last expression in its block.** knitr
      auto-prints the visible value of each top-level expression, so
      `if (nrow(x)) { kable(x); write_csv(x, f) }` writes the file and shows
      nothing: the block's value is `write_csv`'s invisible return. Put the
-     `kable()` last in the branch (`{ write_csv(x, f); kable(x) }`) so the
-     `if` returns it. Do NOT reach for `print(knitr::kable(x))` -- that prints
-     the markdown source into the output block as verbatim text instead of
-     rendering a table. Both failures are silent: the render succeeds either
-     way, and the table the verification gate asks for is missing or ugly.
-   - **Every `config$...` the stage reads actually exists.** Grep the
-     generated stage for `config\$[a-z_]*\$[a-z_0-9]*` and check each one
-     against `_config.yml`; the derivation proposes what the source systems
-     know, which is not the same set the templates read. A missing key is
-     `NULL`, and `NULL * 100` is `numeric(0)`, so a threshold silently
-     becomes empty and every comparison against it returns `logical(0)` —
-     which surfaces much later as a recycling error naming an innocent
-     variable. `validation.max_missing_allowed` was the one that bit.
+     `kable()` last (`{ write_csv(x, f); kable(x) }`) so the `if` returns it.
+   - **No `print(knitr::kable(x))`.** That prints the markdown source into the
+     output block as verbatim text instead of rendering a table.
+   - **`embed-resources: true` is in the YAML**, so a render is one
+     self-contained file that can be sent for review.
+
+   One thing the script cannot check, so check it by hand: **resolve every
+   external column name instead of hard-coding its spelling.** The same
+   MetricWire study is `Survey Started Date` through the dashboard export and
+   `survey_started_date` through the API, and one FARM-TOK export had no
+   `source_name` at all — its battery discriminator was `survey_name`. A
+   hard-coded lookup returns `NULL`, which reaches a gate as "no timestamp
+   parsed" and looks like missing data rather than a missing name. Normalise
+   both sides (lowercase, non-alphanumeric to `_`) and carry the export's own
+   spelling downstream. The declared item crosswalk needs the same treatment:
+   FARM-TOK's `AM_Loc_1744980522641` is `am_loc_1744980522641` in the export.
+
 3. **Render.** From the terminal, or from the R console — the script works
    either way, and telling someone the wrong one costs a round trip:
    ```
@@ -397,6 +424,9 @@ that only works from a chat.
 - `assets/example-redcap-metadata/`: the three export files, fictional, as the
   derivation expects them.
 - `scripts/proof_modalities.R`: synthetic proof of everything this skill adds.
+- `scripts/preflight_stage.R`: static check of a generated stage before
+  anyone renders it — parse, config keys, discarded tables, swallowed
+  diagnostics, unattached packages, `embed-resources`. Needs no data.
 - `scripts/render_stage.R`: render one stage and file its HTML at
   `output/renders/<id>.html`, without Quarto project mode (see step 3).
   Copy it into the study alongside the other scripts.
