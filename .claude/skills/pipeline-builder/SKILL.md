@@ -123,19 +123,49 @@ Rscript scripts/derive_config.R <study> --dict metadata/DataDictionary.csv \
     --events metadata/events.csv --map metadata/instrument_event_map.csv   # no token
 ```
 
-For a study with MetricWire EMA, then read MetricWire the same way. Each
-session's analysis data (API pull with credentials, or the cached export),
-its codebook (dashboard PDF or parsed CSV) and, when the study has it, the
-choicesDataCoding export:
+For a study with MetricWire EMA, then read MetricWire the same way. **Ask
+first for the survey definition export of every battery** (dashboard >
+survey > export; one CSV per survey, e.g. `Morning_Battery-<timestamp>.csv`)
+and keep them under `metadata/metricwire_survey_definitions/`. That file is
+the MetricWire source of truth and the codebook PDF is only a summary of it.
+FARM-TOK ran four render cycles and a legacy pipeline on the PDF alone, and
+the definition export settled in one read everything the PDF could not:
+
+- **question text and order for field-group children** -- the PDF prints a
+  field group's header and drops its children, so 15 affect adjectives and 6
+  risk items had been carried under placeholder names
+- **the per-battery variable name** with its page suffix
+  (`quest_<id>_<page>` in one battery, `quest_<id>_<page>_<page2>` in the
+  other), which is exactly the crosswalk 04 needs
+- **the displayed choices** (`choices`) -- which is what the analysis export
+  carries, as labels, not codes
+- **the `disabled` flag** -- a column with almost no data is usually a
+  question that was switched off, not a participant behaviour (FARM-TOK's
+  bedtime item, 16 responses, and both free-text "Other" boxes were
+  disabled)
+- **piping** (`|*RESPONSE*|` in the text): an item piped from a disabled
+  source never displays and never appears in the export, though the survey
+  lists it as enabled -- FARM-TOK's four morning aggression items
+
+Two things the definition export does NOT settle. Its `choicesDataCoding`
+field is unreliable -- duplicated, truncated or shorter than the choice
+list for a third of FARM-TOK's items -- and the analysis export does not
+carry those codes anyway, so assign codes by dashboard position and say so
+in the config. And it does not know what is in the data: keep the observed
+ranges, sentinels and label sets that 04 reports as the check on it.
+
+Then each session's analysis data (API pull with credentials, or the cached
+export) and, as a fallback where no definition export exists, the codebook
+PDF or parsed CSV and the choicesDataCoding export:
 
 ```
 Rscript scripts/derive_ema_config.R --codebook period_1=metadata/period_1_codebook.pdf \
     --coding period_1=metadata/period_1_coding.csv --id-pattern '^[0-9]{4}$'
 ```
 
-Before the first pull, the codebook alone plus the dashboard's Data Import
-templates (Survey > Data Import, header-only CSVs, one per survey) are
-enough to propose the block: `--template "Morning Battery=metadata/...csv"`.
+Before the first pull, the definition exports alone (or, failing them, the
+codebook plus the dashboard's Data Import templates -- Survey > Data
+Import, header-only CSVs, one per survey) are enough to propose the block: `--template "Morning Battery=metadata/...csv"`.
 The codebook may be the real dashboard PDF (read with pdftools, layout
 preserved) or the parsed items CSV; a `canonical_name` column in that CSV
 fixes the study's own item names across re-derivations.
