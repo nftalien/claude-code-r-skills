@@ -236,6 +236,11 @@ collect_defs <- function(e) {
       is.name(e[[2]]) && is.call(e[[3]]) && identical(e[[3]][[1]], as.name("function"))) {
     defined <<- c(defined, as.character(e[[2]]))
   }
+  # A function's formal arguments can themselves be called inside its body
+  # (`by_arm(d, f)` ... `f(d)`); they are defined for that body.
+  if (identical(e[[1]], as.name("function")) && length(e) >= 2 && !is.null(e[[2]])) {
+    defined <<- c(defined, names(e[[2]]))
+  }
   kids <- as.list(e)[-1]
   for (i in seq_along(kids)) if (!empty_arg(kids[[i]]) && is.call(kids[[i]])) collect_defs(kids[[i]])
   invisible(NULL)
@@ -252,6 +257,20 @@ for (ch in chunks) {
   exprs <- tryCatch(parse(text = paste(ch$code, collapse = "\n")), error = function(e) NULL)
   if (is.null(exprs)) next
   for (e in exprs) { collect_defs(e); collect_calls(e) }
+}
+# Project helpers: a stage that sources R/*.R (the fearlabr-pipeline
+# `local_r` idiom) may call anything defined there. Collect those
+# definitions from the project's R/ directory, found upward from the stage.
+all_code <- paste(unlist(lapply(chunks, `[[`, "code")), collapse = "\n")
+if (grepl("here::here\\(\"R\"\\)|source\\(", all_code)) {
+  proj <- normalizePath(dirname(qmd))
+  for (up in 1:3) { if (dir.exists(file.path(proj, "R"))) break; proj <- dirname(proj) }
+  helper_files <- list.files(file.path(proj, "R"), pattern = "\\.R$", full.names = TRUE)
+  for (hf in helper_files) {
+    exprs <- tryCatch(parse(hf), error = function(e) NULL)
+    if (!is.null(exprs)) for (e in exprs) collect_defs(e)
+  }
+  if (length(helper_files)) cat("   (", length(helper_files), " project helper file(s) under R/ counted as definitions)\n", sep = "")
 }
 # Operators, control flow and subsetting are calls too; only plain names can be
 # the sort of helper this check is about.
