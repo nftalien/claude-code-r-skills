@@ -219,8 +219,62 @@ cat("   attached: ", paste(libs, collapse = ", "), "\n", sep = "")
 if (length(unattached)) note(length(unattached), " package(s) used but not attached: ",
                              paste(unattached, collapse = ", "))
 
-# ── 7. the render must be one self-contained file ─────────────────────
-cat("\n7. embed-resources\n")
+# ── 7. every function called is defined somewhere ─────────────────────
+# Catches a call to a helper that was renamed, or deleted along with the block
+# it sat in, and catches plain typos. This one is worth the machinery: an
+# undefined helper fails only when its chunk RUNS, so it surfaces as a render
+# error two thirds of the way through rather than at parse time.
+cat("\n7. functions called but never defined\n")
+defined <- character()
+collect_defs <- function(e) {
+  if (empty_arg(e) || !is.call(e)) return(invisible(NULL))
+  if (deparse(e[[1]])[1] %in% c("<-", "=", "<<-") && length(e) == 3 &&
+      is.name(e[[2]]) && is.call(e[[3]]) && identical(e[[3]][[1]], as.name("function"))) {
+    defined <<- c(defined, as.character(e[[2]]))
+  }
+  kids <- as.list(e)[-1]
+  for (i in seq_along(kids)) if (!empty_arg(kids[[i]]) && is.call(kids[[i]])) collect_defs(kids[[i]])
+  invisible(NULL)
+}
+called <- character()
+collect_calls <- function(e) {
+  if (empty_arg(e) || !is.call(e)) return(invisible(NULL))
+  if (is.name(e[[1]])) called <<- c(called, as.character(e[[1]]))
+  kids <- as.list(e)
+  for (i in seq_along(kids)) if (!empty_arg(kids[[i]]) && is.call(kids[[i]])) collect_calls(kids[[i]])
+  invisible(NULL)
+}
+for (ch in chunks) {
+  exprs <- tryCatch(parse(text = paste(ch$code, collapse = "\n")), error = function(e) NULL)
+  if (is.null(exprs)) next
+  for (e in exprs) { collect_defs(e); collect_calls(e) }
+}
+# Operators, control flow and subsetting are calls too; only plain names can be
+# the sort of helper this check is about.
+called <- unique(called[grepl("^[A-Za-z.][A-Za-z0-9._]*$", called)])
+called <- setdiff(called, c("if", "for", "while", "repeat", "function", "return", "break", "next"))
+
+# Anything an attached package exports is defined. A package that will not load
+# is not evidence of a missing function, so skip it and say so.
+base_pkgs <- c("base", "stats", "utils", "methods", "graphics", "grDevices", "tools")
+unloadable <- character()
+exported <- character()
+for (pk in unique(c(base_pkgs, libs))) {
+  ok <- tryCatch({ loadNamespace(pk); TRUE }, error = function(e) FALSE)
+  if (ok) exported <- c(exported, getNamespaceExports(pk)) else unloadable <- c(unloadable, pk)
+}
+undefined <- setdiff(called, c(defined, exported))
+for (u in sort(undefined)) cat("   *** not defined anywhere *** ", u, "()\n", sep = "")
+if (length(unloadable))
+  cat("   (could not load ", paste(unloadable, collapse = ", "),
+      ", so functions from it are not checked)\n", sep = "")
+cat("   ", length(called), " function(s) called, ", length(defined),
+    " defined in the stage, ", length(undefined), " unaccounted for\n", sep = "")
+if (length(undefined)) note(length(undefined), " function(s) are called but defined nowhere: ",
+                            paste(sort(undefined), collapse = ", "))
+
+# ── 8. the render must be one self-contained file ─────────────────────
+cat("\n8. embed-resources\n")
 yaml_end <- grep("^---[[:space:]]*$", lines)
 hdr <- if (length(yaml_end) >= 2) lines[yaml_end[1]:yaml_end[2]] else character()
 if (any(grepl("embed-resources:[[:space:]]*true", hdr))) {
