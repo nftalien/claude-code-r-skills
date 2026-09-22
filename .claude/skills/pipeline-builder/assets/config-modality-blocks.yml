@@ -16,6 +16,11 @@
 timepoints:
   anchor: baseline                          # schedule key whose date anchors offsets
   anchor_date_column: "{{ANCHOR_DATE_FIELD}}"  # REDCap field holding each participant's anchor date
+  # Continuous EMA (weeks of prompts rather than a visit): list `ema` on every
+  # timepoint whose window overlaps the EMA period and declare the period here;
+  # 07m assigns each EMA day to the window that holds it and adds one
+  # `ema_period` coverage row. Delete this key for visit-bound EMA.
+  ema_period: {label: "EMA period", window_days: [0, 49]}
   schedule:
     baseline: {label: "Baseline", offset_days: 0,  window_days: [-7, 7],
                redcap_event: "baseline_arm_1", modalities: [redcap, ema, eeg, sensors]}

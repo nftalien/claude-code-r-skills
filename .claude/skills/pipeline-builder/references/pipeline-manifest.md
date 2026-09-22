@@ -138,6 +138,21 @@ builder adds these stages, files and gates. `<stem>` is
   (rows).
 - **teaches**: format drift is the mechanism behind a silent under-join;
   a participant-level table repeats across timepoints by design.
+- **continuous EMA** (a protocol where EMA runs for weeks rather than at a
+  visit): list `ema` on every timepoint whose window overlaps the EMA period
+  and declare the period once as `timepoints.ema_period: {label, window_days:
+  [0, N]}`. 07m then assigns each clean EMA day (`<stem>_ema_day_latest.rds`,
+  06's output before the ITT join) to the timepoint whose window holds it,
+  in days from the anchor, and reports `ema_period` as one extra coverage
+  row. `has_ema` is NA at a timepoint that does not list `ema`, never FALSE.
+  The anchor is `timepoints.anchor_date_column` on the participant-level
+  file (REDCap exports a `datetime_dmy` field as ISO, so the first ten
+  characters are the date); a blank anchor falls back to the participant's
+  first EMA day and is listed as a fallback, a present-but-unparseable one
+  stops the stage. Also write `<stem>_modality_anchor_dates.csv` (anchor
+  source and EMA start lag per participant) and warn when the lag is below
+  -7 or above +14 days. FARM-TOK's `07m_link_modalities.qmd` is the worked
+  example.
 
 ### 07c_id_audit, 08, 10
 Depend on 07m in the builder's registry (07c reads the same sources; 08 and
