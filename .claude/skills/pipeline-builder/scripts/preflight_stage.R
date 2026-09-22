@@ -133,11 +133,14 @@ cat("   ", length(pk), " occurrence(s)\n", sep = "")
 if (length(pk)) note(length(pk), " print(kable()) call(s) will emit verbatim markdown, not a table")
 
 # ── 5. no diagnostic printed in a chunk that then stops ───────────────
-# A chunk that calls stop() produces no document, so Quarto discards
-# everything the chunk printed BEFORE the stop. The error string is the only
-# text that escapes. A gate that cat()s its evidence and then stops names the
-# problem and shows none of it -- put the diagnostics in an earlier chunk that
-# finishes, or inside the stop() message itself.
+# A chunk that calls stop() discards the WHOLE DOCUMENT, not just its own
+# output: Quarto produces no HTML and the error string is the only text that
+# reaches anyone. A gate that cat()s its evidence and then stops names the
+# problem and shows none of it.
+# Moving that evidence to an earlier chunk does NOT fix it -- that chunk's
+# output dies with the document too. It has to go inside the stop() message,
+# e.g. capture.output(print(as.data.frame(x))), so the table travels with the
+# error.
 cat("\n5. diagnostics swallowed by a stop() in the same chunk\n")
 # Compare only statements that can run in the SAME pass. Source order is not
 # execution order: `if (a) { cat(x) } else stop(y)` has a print above a stop
@@ -186,7 +189,8 @@ for (ch in chunks) {
 }
 cat("   ", swallowed, " chunk(s)\n", sep = "")
 if (swallowed) note(swallowed, " chunk(s) print diagnostics and then stop(); ",
-                    "move the diagnostics to a chunk that finishes, or into the stop() message")
+                    "put that evidence INSIDE the stop() message -- moving it to an earlier ",
+                    "chunk does not help, the whole document is discarded either way")
 
 # ── 6. libraries attached, not merely imported ────────────────────────
 # fearlabr imports dplyr without attaching it, so a body using dplyr verbs or

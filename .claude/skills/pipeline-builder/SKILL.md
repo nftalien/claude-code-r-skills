@@ -264,13 +264,22 @@ Repeat until `next_stage(m)` is `NULL`:
      only `fearlabr`, which imports dplyr without attaching it, so a body
      using dplyr verbs or `%>%` dies at whichever chunk reaches them first.
    - **No diagnostic is printed in a chunk that then `stop()`s.** A chunk that
-     stops produces no document, so Quarto discards everything the chunk
-     printed first — the error string is the only text that escapes. A gate
-     that `cat()`s its evidence and then stops names the problem and shows
-     none of it. Put the diagnostics in an earlier chunk that finishes (the
-     `-diagnose` / `-gate` pair), or inside the `stop()` message. The check
-     walks the parse tree, so a print and a stop in sibling `if`/`else`
-     branches are correctly left alone.
+     stops discards the **whole document**, not just its own output — Quarto
+     produces no HTML at all and the error string is the only text that
+     reaches anyone. A gate that `cat()`s its evidence and then stops names
+     the problem and shows none of it.
+
+     Note carefully what does and does not fix this, because getting it wrong
+     costs a render cycle and it cost one here: moving the evidence into an
+     **earlier chunk that finishes rescues nothing**, since that chunk's
+     output dies with the document too. A `-diagnose` / `-gate` split only
+     helps for output a *successful* render carries (warnings the person
+     should see in the HTML). Evidence that a gate **stops** on must be inside
+     the `stop()` message — build it with `capture.output(print(...))` so the
+     table travels with the error.
+
+     The check walks the parse tree, so a print and a stop in sibling
+     `if`/`else` branches are correctly left alone.
 
    **These SUCCEED and quietly omit what the verification gate asks to look
    at, which is worse — the render looks fine.**
