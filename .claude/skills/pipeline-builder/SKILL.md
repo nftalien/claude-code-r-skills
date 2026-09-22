@@ -313,8 +313,17 @@ Repeat until `next_stage(m)` is `NULL`:
    library(fearlabr)
    builder_stage_gate <- function(...) invisible(TRUE)     # do not touch pipeline state
    builder_record_render <- function(...) invisible(TRUE)
+   knitr::opts_chunk$set(error = FALSE)                    # NOT optional -- see below
    setwd("notebooks"); knitr::knit("<id>.qmd", output = "../dryrun.md", envir = globalenv())
    ```
+   `error = FALSE` is the whole point. knitr's default is `error = TRUE`: a
+   chunk error is written *into* the document and the knit carries on, so
+   the call returns normally and a "knit OK" proves nothing. Quarto renders
+   with `error = FALSE`. A harness that omits the line passed a stage that
+   then failed on the person's machine on an undefined helper, and later
+   "passed" a gate test that should have stopped. Assert the outcome you
+   expect -- a stop for a broken input, a clean run for a good one -- and
+   wrap the knit in `tryCatch` so the stop's message is what you read.
    Do this in a throwaway copy of the project so `_pipeline.yml` is not
    modified, and never with real participant data.
 
@@ -369,6 +378,13 @@ Repeat until `next_stage(m)` is `NULL`:
 4. **Verify.** The person sends the HTML or the console tail. Run
    `summarise_render_log()` on the text, quote every `⚠️` and `⏭` line, read
    the ID audit lines and the numbers the stage contract says to read, and
+   **read every `n / of` table to its rows, not its header**. FARM-TOK's
+   stage 04 was approved with `start_datetime parsed 1773 / 4633` in a
+   three-row table whose header had been checked and whose rows had not; the
+   62% of prompts with no date surfaced a stage later as a study-day
+   comparison 142 days off. A partial count in a "parsed" or "matched" row is
+   a finding, and a stage should stop on it rather than report it. Do the same
+   for the tables in a render that "looks fine": the defect is in the numbers.
    walk through `references/verification-gates.md` for that stage. Tell the
    person what is right, what is not, and what to look at in the render. If
    something is wrong: `mark_stage(m, id, "failed", note = ...)`, fix, back
