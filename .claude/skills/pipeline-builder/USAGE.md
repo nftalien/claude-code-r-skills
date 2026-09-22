@@ -99,7 +99,7 @@ a config field to fix; green means real data can go in.
 will show. You render it:
 
 ```
-quarto render notebooks/01e_ingest_eeg.qmd --output-dir output/renders
+Rscript scripts/render_stage.R 01e_ingest_eeg
 ```
 
 Send back the HTML or the last screen of the console. Claude quotes the
@@ -118,7 +118,7 @@ That records your approval and names the next stage. Repeat.
 **6. See where things stand.** Any time:
 
 ```
-quarto render notebooks/00b_pipeline_status.qmd --output-dir output/renders
+Rscript scripts/render_stage.R 00b_pipeline_status
 ```
 
 The diagram colours each stage by status; the table underneath says what is
