@@ -295,6 +295,52 @@ Repeat until `next_stage(m)` is `NULL`:
    spelling downstream. The declared item crosswalk needs the same treatment:
    FARM-TOK's `AM_Loc_1744980522641` is `am_loc_1744980522641` in the export.
 
+   **Then dry-run it before anyone else does.** Pre-flight is static and cannot
+   see what only happens when the code runs. Build a synthetic export carrying
+   the source system's REAL column names, put it where the stage's reader looks,
+   and execute the stage with knitr (quarto is not needed to find runtime
+   errors):
+   ```r
+   library(fearlabr)
+   builder_stage_gate <- function(...) invisible(TRUE)     # do not touch pipeline state
+   builder_record_render <- function(...) invisible(TRUE)
+   setwd("notebooks"); knitr::knit("<id>.qmd", output = "../dryrun.md", envir = globalenv())
+   ```
+   Do this in a throwaway copy of the project so `_pipeline.yml` is not
+   modified, and never with real participant data.
+
+   Use `generate_synthetic_*()` for the engine's own proof scripts, but NOT for
+   this: those build their columns from the config, so they fabricate the
+   config's own assumptions and cannot catch a config/export mismatch — the most
+   common real failure. Take the column names from the export itself (the
+   person can paste `names(x)` from their machine).
+
+   On FARM-TOK's stage 04 the dry run found three things pre-flight could not,
+   and each would have cost a render or, worse, passed unnoticed:
+   - **Silent data loss.** The config split the EMA into `ema_items`,
+     `multi_select_fields` and `time_fields`, and the stage built its crosswalk
+     from the first alone. Eight collected variables — substance use and sleep
+     timing among them — never reached the derived dataset. Nothing errored.
+     Check that every declared block reaches the output, not just the one the
+     template happened to read.
+   - **A gate brittle enough to stop a real render.** It inferred a scale shift
+     from observed minima and equal spans, so it fired whenever nobody had yet
+     answered the top of a scale — the normal state of an early pull. Let
+     DECLARED values drive a transformation and observed values only validate
+     it: a gate should fire when an observation falls outside what is declared,
+     not when observation is merely incomplete. A gate that cries wolf gets
+     ignored, which is worse than no gate.
+   - **A protection that could not work.** Free text was screened by looking for
+     letters, which says nothing about a column exporting option LABELS: every
+     value has letters and a typed "Other" looks exactly like an option. The
+     planted test value walked straight through. Screen label columns by
+     subtracting the declared labels and keeping what is left.
+
+   Plant the awkward cases in the synthetic data deliberately — a typed "Other",
+   a gated item's `CONDITION_SKIPPED`, a missed prompt, one battery's columns
+   empty on the other battery's rows, an observed range narrower than declared.
+   A generator that only produces tidy values tests nothing.
+
 3. **Render.** From the terminal, or from the R console — the script works
    either way, and telling someone the wrong one costs a round trip:
    ```
