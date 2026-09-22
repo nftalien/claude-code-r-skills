@@ -100,7 +100,23 @@ the coverage files; the linked row count equals the index row count.
 
 ### 07c_id_audit
 As fearlabr-pipeline. The UpSet intersections should reproduce the coverage
-dashboard's story.
+dashboard's story. Two additions that came out of FARM-TOK (2026-09-22):
+
+- **Repairs must be applied where each source's id is first built**, 03 for
+  REDCap and 04 for MetricWire, not only in 02. 02's `apply_id_repairs()`
+  is a linkage check that writes nothing; a repair declared in
+  `metadata/id_repairs.csv` that is applied nowhere else silently never
+  happens. 07c checks this: no `from_id` may survive in any downstream
+  source. A repaired id must not also sit in `exclusions.test_ids`, or 05
+  drops the rows before the repair matters; 03 and 04 stop on that clash.
+- **Set non-conforming ids aside before the format check.** REDCap test and
+  screening records ("Test", "Ineligible 1") and MetricWire staff accounts
+  fail the `record_id` pattern by design; list them by name, run the
+  length and shape check on the conforming ids only, and end with an
+  *unaccounted* list: strays that no declaration (`test_ids`,
+  `test_id_patterns`, `exclusions.csv`, `id_repairs.csv`) explains. On a
+  clean study it is empty; anything on it goes to the study team and then
+  into one of those four places.
 
 ### 08_feasibility, 10_outcomes_models
 As fearlabr-pipeline Mode E. Validation-gate blockquotes state expected
