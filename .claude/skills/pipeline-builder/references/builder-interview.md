@@ -19,6 +19,12 @@ environment); otherwise the three Project Setup exports (data dictionary,
 events, instrument-event mapping) dropped in `metadata/`. It writes
 `_config.proposed.yml` and `metadata/config_todo.csv`.
 
+Ask for the export date of the three files, and stop if a form appears in
+the instrument-event mapping but not in the dictionary: the dictionary is
+stale (FARM-TOK's predated a consent-form copy; six consent dates went
+missing). All three exports come from the same day, after the last form
+edit.
+
 What it derives without asking: the ID column; every event with its raw
 name, label and whether a scored instrument is collected there; each
 instrument's items in dictionary order, item range, total range, the calc
@@ -57,7 +63,20 @@ Open `metadata/config_todo.csv` with the person. `ask` rows first:
 - **Offsets REDCap left at zero and the name did not give** (`posttx`,
   `followup`). From the protocol.
 - **Multi-condition branching logic.** Listed, not converted; decide whether
-  each is a structural skip.
+  each is a structural skip. Every skip rule states when a field was
+  SKIPPED; REDCap's branching states when it is SHOWN, so the rule is the
+  negation (`trigger_op: '<>'`). Check one rule against a record that was
+  asked before accepting the set.
+- **Stratifiers and their events.** Randomisation stratifiers usually sit
+  on the randomisation event, not baseline; record the event with the
+  field, or stage 10 reads NA for everyone.
+- **Test ids and id repairs.** Read `metadata/id_repairs.csv` beside
+  `exclusions.test_ids`; an id in both is an error (a repaired id is a
+  participant, a test id is not). Repairs are applied wherever ids are built
+  from raw (03, 04), not only reported at 02.
+- **Field names that collide with fearlabr outputs.** A REDCap field named
+  `condition`, `wave`, `study_id` or another reserved output column is
+  renamed `<name>_redcap_raw` at 03; list them now.
 
 Then `inferred` rows (confirm each number), then `default` rows (accept or
 change). `derived` rows are shown as a table, not asked. Timepoint keys may

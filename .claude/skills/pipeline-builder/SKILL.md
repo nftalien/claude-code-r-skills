@@ -40,7 +40,8 @@ the engine and the REDCap + EMA stages; this skill adds four things:
 
 Read the fearlabr-pipeline skill's `SKILL.md`, `references/stage-contract.md`,
 `references/conventions.md` and `references/lessons-ufos-2026-09.md` before
-building anything. Everything there holds here. The additions below are what
+building anything, and this skill's `references/lessons-farmtok-2026-09.md`
+and `references/study-intake-checklist.md` before the interview. Everything there holds here. The additions below are what
 changes when the study has more than REDCap and EMA, or when the person wants
 to watch the pipeline come together rather than receive a zip.
 
@@ -510,6 +511,12 @@ that only works from a chat.
   the stage contract addendum, before generating any stage.
 - `references/modality-eeg.md`, `references/modality-sensor.md`: before
   writing the modality's config block or stages.
+- `references/study-intake-checklist.md`: before the interview of a new
+  study; the documents to ask for, and why.
+- `references/lessons-farmtok-2026-09.md`: before starting a new study,
+  and again before generating 08, 10 or 11; what a full build taught,
+  the mistakes now caught on the front end, and the build order that
+  worked.
 - `references/shiny-roadmap.md`: only when the front end is being planned.
 - fearlabr-pipeline's references, always.
 
