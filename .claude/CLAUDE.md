@@ -29,6 +29,7 @@ For detailed guidance on specific topics, refer to these skill files:
 | **Package Development** | [r-package-development](skills/r-package-development/SKILL.md) | Dependencies, API design, testing |
 | **Bayesian Inference** | [r-bayes](skills/r-bayes/SKILL.md) | brms, DAG validation, multilevel models, marginaleffects |
 | **Machine Learning** | [r-machine-learning](skills/r-machine-learning/SKILL.md) | XGBoost, LightGBM, CatBoost, TabNet, ensembles, CV |
+| **Pipeline Builder** | [pipeline-builder](skills/pipeline-builder/SKILL.md) | Stage-by-stage study pipelines on fearlabr with timepoints, EEG/sensor modules, and a verification gate per stage |
 
 ## Quick Reference
 

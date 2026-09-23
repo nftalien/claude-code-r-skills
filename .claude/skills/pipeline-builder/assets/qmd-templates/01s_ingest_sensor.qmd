@@ -1,0 +1,106 @@
+---
+title: "{{STUDY_NAME}} — 01s Ingest sensor streams"
+subtitle: "Vendor exports → canonical participant-days, one table per stream"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-summary: "Show code"
+    embed-resources: true
+    df-print: kable
+execute:
+  warning: true
+  message: false
+---
+
+## Overview
+
+Each stream declared under `sensors.streams` (a wrist actigraph's daily
+summary, a phone's accelerometer epochs, a sleep export) is read from the
+files its glob matches, its vendor columns are renamed to the metric names
+the study uses, and epoch rows are collapsed to one row per participant-day
+with the aggregate the config declares. Dates are local calendar dates in
+the configured time zone; an epoch timestamp is never turned into a date
+through `as.Date()` on a POSIXct, which ignores the time zone and moved a
+fifth of one study's evening events onto the next day.
+
+Nothing is judged here. Which days count as valid is 02s's job, by the rule
+the config states.
+
+```{r}
+#| label: setup
+suppressPackageStartupMessages({ library(fearlabr); library(dplyr) })
+config <- read_config()
+stem <- fearlabr_file_stem(config)
+builder_stage_gate("01s_ingest_sensor")
+raw_dir <- resolve_path(config$paths$raw_data, config)
+figures_dir <- resolve_path(config$paths$figures %||% "output/figures", config)
+dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+streams <- names(config$sensors$streams)
+cat("• Streams: ", paste(streams, collapse = ", "), "   tz: ", config$sensors$tz %||% "UTC", "\n", sep = "")
+```
+
+## Ingest, stream by stream
+
+Read each block's ID line. `dup` is expected to be large here (one row per
+day per person); `format-fail` and `missing` are the numbers that matter.
+
+```{r}
+#| label: ingest
+day_tables <- list()
+for (sk in streams) {
+  log_section(paste0("Stream: ", sk, " (", config$sensors$streams[[sk]]$label %||% sk, ")"))
+  files <- builder_glob_files(config, config$sensors$streams[[sk]]$file_glob)
+  if (!length(files)) {
+    cat("⏭ No file matches '", config$sensors$streams[[sk]]$file_glob, "'; stream skipped\n", sep = "")
+    next
+  }
+  cat("• ", length(files), " file(s): ", paste(basename(files), collapse = ", "), "\n", sep = "")
+  day <- ingest_sensor_stream(config, sk, files = files, write = TRUE)
+  cat("✓ ", nrow(day), " participant-days; ", dplyr::n_distinct(day$study_id), " participants; ",
+      format(min(day$date)), " to ", format(max(day$date)), "\n", sep = "")
+  cat("✓ Wrote ", stem, "_sensor_", sk, "_day_latest.rds\n", sep = "")
+  day_tables[[sk]] <- day
+}
+if (!length(day_tables)) stop("No sensor stream had files; drop exports under ", raw_dir, " and re-render.")
+```
+
+## Quick look: observed days per participant
+
+Before any validity rule, simply which days exist. A participant whose block
+starts weeks after everyone else's, or a stream that ends on the same date
+for everyone, is a device or export problem to raise now.
+
+```{r}
+#| label: quicklook
+#| fig-width: 10
+#| fig-height: 6
+for (sk in names(day_tables)) {
+  d <- day_tables[[sk]]
+  cat("• ", sk, ": median ", median(table(d$study_id)), " days per participant\n", sep = "")
+  if (requireNamespace("ggplot2", quietly = TRUE)) {
+    p <- plot_sensor_coverage(d |> mutate(valid_day = TRUE)) +
+      ggplot2::labs(title = paste0(sk, ": observed days")) + ggplot2::theme(legend.position = "none")
+    ggplot2::ggsave(file.path(figures_dir, paste0(stem, "_sensor_", sk, "_observed.png")), p,
+                    width = 10, height = 6, dpi = 120)
+    print(p)
+  }
+}
+bind_rows(lapply(day_tables, function(d) summarise(d, n_participants = n_distinct(study_id),
+                                                     n_days = n(), first = min(date), last = max(date),
+                                                     .by = sensor_stream)))
+```
+
+## What happens next
+
+02s applies each stream's `valid_day_rule`, reports coverage per participant,
+and attaches the declared timepoints using each participant's anchor date
+from REDCap. Approve this stage once every stream you expected was read,
+the ID lines show zero format failures, and the date ranges match the
+study's calendar.
+
+```{r}
+#| label: record
+builder_record_render("01s_ingest_sensor")
+```

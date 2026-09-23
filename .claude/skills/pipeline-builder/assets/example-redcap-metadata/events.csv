@@ -1,0 +1,5 @@
+event_name,arm_num,day_offset,offset_min,offset_max,unique_event_name,custom_event_label
+Enrollment,1,0,0,0,enrollment_arm_1,
+Baseline,1,0,0,0,baseline_arm_1,
+Week 4,1,28,3,7,week_4_arm_1,
+6 Month,1,0,0,0,6_month_arm_1,
