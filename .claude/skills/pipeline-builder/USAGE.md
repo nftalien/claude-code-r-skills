@@ -102,6 +102,21 @@ will show. You render it:
 Rscript scripts/render_stage.R 01e_ingest_eeg
 ```
 
+Stages 10 and 11 can be rendered again on a declared subgroup, same
+notebook, outputs under `tables/<key>/` and `figures/<key>/`:
+
+```
+Rscript scripts/render_stage.R 10_outcomes_models female
+```
+
+When an upstream fix resets a chain of stages whose notebooks did not
+change, one command renders and approves them in order (and renders each
+subgroup after 10 and 11):
+
+```
+Rscript scripts/rerun_stages.R 03_clean_redcap 03b_lock_redcap 04_prepare_ema
+```
+
 Send back the HTML or the last screen of the console. Claude quotes the
 warning lines and tells you which numbers and pictures to look at (the ID
 line, the QC tile, the coverage bars). If something is off, it fixes the
@@ -131,13 +146,14 @@ STUDY/
 ├── _config.yml          the study: timepoints, instruments, modalities, files
 ├── _config.proposed.yml what REDCap said, before you confirmed it
 ├── _pipeline.yml        the build record: stages, dependencies, who approved what
-├── notebooks/           00 … 10, plus 00b, 01e, 02e, 01s, 02s, 07m as the study needs
+├── notebooks/           00 … 11, plus 00b, 01e, 02e, 01s, 02s, 07m, 07c as the study needs
 ├── data/raw/            your exports (eeg/ and sensor/ subfolders for those)
 ├── data/derived/        *_latest.rds per stage; *_multimodal_linked_latest.rds from 07m
 ├── output/renders/      one HTML per rendered stage
 ├── output/validation/   QC and coverage CSVs; *_coverage_<modality>.csv feed the dashboard
 ├── output/figures/      the tiles and bars each stage drew
-└── scripts/             install_deps.R, proof_pipeline.R, proof_modalities.R
+└── scripts/             install_deps.R, proof_pipeline.R, proof_modalities.R,
+                         render_stage.R, rerun_stages.R
 ```
 
 ## First-time setup

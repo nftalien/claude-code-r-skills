@@ -19,9 +19,12 @@
 #   R console: source("scripts/render_stage.R"); render_stage("03_clean_redcap")
 # The body is a function; the command-line shim at the bottom calls it.
 
-render_stage <- function(stage) {
+render_stage <- function(stage, subgroup = NULL) {
 
 id <- sub("\\.qmd$", "", basename(stage))
+# A subgroup render (stages 10 and 11): same notebook, `-P subgroup:<key>`,
+# filed as output/renders/<id>_<key>.html; it does not touch _pipeline.yml.
+out_id <- if (is.null(subgroup) || !nzchar(subgroup)) id else paste0(id, "_", subgroup)
 qmd <- file.path("notebooks", paste0(id, ".qmd"))
 if (!file.exists(qmd)) stop(qmd, " not found. Stages live in notebooks/.")
 
@@ -53,8 +56,14 @@ if (!nzchar(quarto)) {
   quarto <- hit[1]
 }
 
-cat("Rendering ", qmd, "\n", sep = "")
-status <- system2(quarto, c("render", shQuote(qmd)))
+cat("Rendering ", qmd, if (out_id != id) paste0(" (subgroup: ", subgroup, ")") else "", "\n", sep = "")
+# A subgroup render passes the parameter but keeps Quarto's default output
+# name: `--output <other name>` breaks embed-resources bundling on Windows
+# (Quarto looks for <input>_files/ under the new name). The file is renamed
+# after the render instead.
+args <- c("render", shQuote(qmd))
+if (out_id != id) args <- c(args, "-P", paste0("subgroup:", subgroup))
+status <- system2(quarto, args)
 html <- file.path("notebooks", paste0(id, ".html"))
 if (status != 0 || !file.exists(html)) {
   stop("render failed for ", id, " (quarto exit ", status, "). Read the message above: the failing chunk is named.")
@@ -62,7 +71,7 @@ if (status != 0 || !file.exists(html)) {
 
 dest_dir <- "output/renders"
 dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
-dest <- file.path(dest_dir, paste0(id, ".html"))
+dest <- file.path(dest_dir, paste0(out_id, ".html"))
 if (!file.rename(html, dest)) {                 # rename fails across volumes
   file.copy(html, dest, overwrite = TRUE); file.remove(html)
 }
@@ -72,7 +81,7 @@ side <- file.path("notebooks", paste0(id, "_files"))
 if (dir.exists(side)) unlink(side, recursive = TRUE)
 
 cat("\u2713 ", dest, " (", round(file.size(dest) / 1024), " KB)\n", sep = "")
-cat("  Look at it, then approve in the R console: builder_approve(\"", id, "\")\n", sep = "")
+if (out_id == id) cat("  Look at it, then approve in the R console: builder_approve(\"", id, "\")\n", sep = "") else cat("  Subgroup render; nothing to approve\n")
 
 invisible(dest)
 }
@@ -82,10 +91,10 @@ invisible(dest)
 # interactive session or not.
 if (any(grepl("^--file=.*render_stage\\.R$", commandArgs()))) {
   .args <- commandArgs(trailingOnly = TRUE)
-  if (length(.args) != 1) {
-    stop("Usage: Rscript scripts/render_stage.R <stage id>, e.g. 00_setup\n",
+  if (!length(.args) %in% 1:2) {
+    stop("Usage: Rscript scripts/render_stage.R <stage id> [<subgroup key>], e.g. 00_setup, or 10_outcomes_models female\n",
          "  From the R console instead: ",
          "source(\"scripts/render_stage.R\"); render_stage(\"00_setup\")")
   }
-  render_stage(.args[1])
+  render_stage(.args[1], if (length(.args) == 2) .args[2] else NULL)
 }

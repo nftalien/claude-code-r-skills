@@ -411,7 +411,11 @@ worked example.
    source("scripts/render_stage.R"); render_stage("<id>")   # R console
    ```
    The notebook's last chunk marks the stage `rendered` in `_pipeline.yml`,
-   and the script files the HTML at `output/renders/<id>.html`. Do not
+   and the script files the HTML at `output/renders/<id>.html`. A second
+   argument renders a declared subgroup (`render_stage.R 10_outcomes_models
+   female`, filed as `<id>_female.html`, nothing to approve);
+   `scripts/rerun_stages.R <ids...>` renders and approves a reset chain in
+   order. Do not
    reach for `quarto render <file> --output-dir output/renders`: that flag
    puts Quarto into project mode for a single file, creating
    `notebooks/.quarto` and deleting it at the end, and on Windows the
@@ -531,6 +535,8 @@ that only works from a chat.
   + EEG + sensors, three timepoints); what the proof script runs without a
   study config.
 - `assets/pipeline-manifest-template.yml`: the manifest shape, annotated.
+- `scripts/render_stage.R`, `scripts/rerun_stages.R`: what the person runs;
+  copied into every study's `scripts/`.
 - `scripts/derive_config.R`: propose `_config.yml` from the REDCap project
   (API, or the three Project Setup exports).
 - `scripts/derive_ema_config.R`: add the `metricwire` block from the analysis
