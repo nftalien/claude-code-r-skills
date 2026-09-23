@@ -535,8 +535,6 @@ that only works from a chat.
   + EEG + sensors, three timepoints); what the proof script runs without a
   study config.
 - `assets/pipeline-manifest-template.yml`: the manifest shape, annotated.
-- `scripts/render_stage.R`, `scripts/rerun_stages.R`: what the person runs;
-  copied into every study's `scripts/`.
 - `scripts/derive_config.R`: propose `_config.yml` from the REDCap project
   (API, or the three Project Setup exports).
 - `scripts/derive_ema_config.R`: add the `metricwire` block from the analysis
@@ -553,7 +551,8 @@ that only works from a chat.
 - `scripts/preflight_stage.R`: static check of a generated stage before
   anyone renders it — parse, config keys, discarded tables, swallowed
   diagnostics, unattached packages, `embed-resources`. Needs no data.
-- `scripts/render_stage.R`: render one stage and file its HTML at
-  `output/renders/<id>.html`, without Quarto project mode (see step 3).
-  Copy it into the study alongside the other scripts.
+- `scripts/render_stage.R`: render one stage, or one stage on a subgroup,
+  and file its HTML at `output/renders/<id>[_<subgroup>].html`, without
+  Quarto project mode (see step 3). `scripts/rerun_stages.R`: render and
+  approve a reset chain in order. Copy both into the study's `scripts/`.
 - `USAGE.md`: the human-facing guide.
