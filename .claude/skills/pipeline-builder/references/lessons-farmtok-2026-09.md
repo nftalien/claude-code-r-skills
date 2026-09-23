@@ -80,21 +80,26 @@ renders: at the interview, in the config, in preflight, or in the dry run.
    (builder-interview 0).
 6. **YAML reads a bare `Yes` or `No` as a boolean.** Option labels written
    as `label: Yes` parsed as `TRUE` and every binary EMA item failed its
-   range check. Rule: quote every option label in generated YAML
-   (`label: "Yes"`), and read the block back with `yaml::read_yaml()` in the
-   dry run to confirm labels are character.
+   range check. Rule: `yaml::write_yaml()` quotes these, hand
+   edits do not, so the check is on the reading side: `preflight_stage.R`
+   step 2b and `fearlabr::assert_config_labels()` (run by
+   `proof_modalities.R`) stop on any label or option value that arrived as
+   a boolean, with its path.
 7. **A reserved output name reused as a field name.** FARM-TOK's REDCap had
    its own `condition` field (a fidelity checklist item); fearlabr writes
    the arm as `condition`. `clean_redcap()` produced `condition.x` and
-   `condition.y`. Rule: the interview lists any REDCap field whose name
-   collides with a fearlabr output column (builder-interview 1); 03 renames
-   it `<name>_redcap_raw`.
+   `condition.y`. Rule: `clean_redcap()` moves such a field aside
+   as `<name>_redcap_raw` (tested), and `redcap_project_to_config()` now
+   names every collision in the todo as an `ask` row and records the rename
+   under `redcap.reserved_field_collisions`, so it is a decision at the
+   interview and not a surprise at 06.
 8. **REDCap branching logic is a "shown when", not a "skipped when".** All
    65 structural skip rules were inverted on the first pass, filling 0 for
-   people who were asked (including C-SSRS follow-ups). Rule: skip rules are
-   written as `trigger_op: '<>'` (the negation of the branching logic) and
-   one rule is checked against a record that was asked before the set is
-   accepted (builder-interview 1).
+   people who were asked (including C-SSRS follow-ups). Rule: `redcap_project_to_config()` inverts the
+   operator when it derives a rule from branching logic (tested in
+   `test-structural-skips.R`); the person still checks one rule against a
+   record that was asked before accepting the set, because a hand-added
+   rule has no derivation to invert it.
 
 ### At preflight and in the dry run
 

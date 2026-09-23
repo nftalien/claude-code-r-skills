@@ -274,3 +274,17 @@ test_that("a total calc covering exactly the kept items raises no such ask", {
   expect_equal(res$instruments$audit$redcap_total_calc, "a_score")
   expect_equal(nrow(res$todo[res$todo$key == "audit.items_in_order", ]), 0L)
 })
+
+test_that("a field that reuses a fearlabr output column is named at derivation", {
+  d <- fixture_dir()
+  dict <- readLines(file.path(d, "dict.csv"))
+  dict <- c(dict, '"condition","fidelity","","radio","Which condition","1, HET | 2, CBT","","","","","","","","","","","",""')
+  writeLines(dict, file.path(d, "dict.csv"))
+  p <- redcap_project_read(files = list(data_dictionary = file.path(d, "dict.csv"), events = file.path(d, "events.csv")))
+  prop <- redcap_project_to_config(p, study_name = "T")
+  expect_equal(prop$config$redcap$reserved_field_collisions, list(condition = "condition_redcap_raw"))
+  row <- prop$todo[prop$todo$key == "reserved_field_collisions", ]
+  expect_equal(nrow(row), 1L)
+  expect_equal(as.character(row$status), "ask")
+  expect_match(row$note, "condition -> condition_redcap_raw")
+})

@@ -549,8 +549,9 @@ that only works from a chat.
   derivation expects them.
 - `scripts/proof_modalities.R`: synthetic proof of everything this skill adds.
 - `scripts/preflight_stage.R`: static check of a generated stage before
-  anyone renders it — parse, config keys, discarded tables, swallowed
-  diagnostics, unattached packages, `embed-resources`. Needs no data.
+  anyone renders it — parse, config keys, YAML booleans where labels
+  belong, discarded tables, swallowed diagnostics, unattached packages,
+  `embed-resources`. Needs no data.
 - `scripts/render_stage.R`: render one stage, or one stage on a subgroup,
   and file its HTML at `output/renders/<id>[_<subgroup>].html`, without
   Quarto project mode (see step 3). `scripts/rerun_stages.R`: render and

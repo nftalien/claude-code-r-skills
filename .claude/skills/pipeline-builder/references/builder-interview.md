@@ -65,8 +65,10 @@ Open `metadata/config_todo.csv` with the person. `ask` rows first:
 - **Multi-condition branching logic.** Listed, not converted; decide whether
   each is a structural skip. Every skip rule states when a field was
   SKIPPED; REDCap's branching states when it is SHOWN, so the rule is the
-  negation (`trigger_op: '<>'`). Check one rule against a record that was
-  asked before accepting the set.
+  negation (`trigger_op: '<>'`), which the derivation applies to every
+  single-field rule it proposes. Check one rule against a record that was
+  asked before accepting the set, and write any hand-added rule the same
+  way.
 - **Stratifiers and their events.** Randomisation stratifiers usually sit
   on the randomisation event, not baseline; record the event with the
   field, or stage 10 reads NA for everyone.
@@ -74,9 +76,11 @@ Open `metadata/config_todo.csv` with the person. `ask` rows first:
   `exclusions.test_ids`; an id in both is an error (a repaired id is a
   participant, a test id is not). Repairs are applied wherever ids are built
   from raw (03, 04), not only reported at 02.
-- **Field names that collide with fearlabr outputs.** A REDCap field named
-  `condition`, `wave`, `study_id` or another reserved output column is
-  renamed `<name>_redcap_raw` at 03; list them now.
+- **Field names that collide with fearlabr outputs.** The proposal's
+  `redcap.reserved_field_collisions` rows (an `ask` in the todo) name every
+  REDCap field called `condition`, `wave`, `study_id` or another output
+  column; `clean_redcap()` renames each `<name>_redcap_raw`. Confirm the
+  study does not mean the field as the thing fearlabr writes there.
 
 Then `inferred` rows (confirm each number), then `default` rows (accept or
 change). `derived` rows are shown as a table, not asked. Timepoint keys may

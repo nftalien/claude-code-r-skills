@@ -181,3 +181,14 @@ reads its study facts from `_config.yml`; nothing is study-specific.
   `test-structural-skips.R` (trigger_op) (helper `helper-builder-config.R`).
 * `ggplot2` stays in Suggests; every plot function returns its table with a
   message when ggplot2 is absent.
+
+## Front-end config checks (2026-09-23, from the FARM-TOK build)
+
+- `assert_config_labels(config)`: stops on any `label`, `value`, `choices`
+  or `options` element that YAML read as a boolean (a hand-written
+  `label: Yes`). Run by `proof_modalities.R`; the same walk is step 2b of
+  `preflight_stage.R`.
+- `fearlabr_reserved_columns()`: the output names `clean_redcap()` writes.
+  `redcap_project_to_config()` now records any REDCap field that reuses one
+  under `redcap.reserved_field_collisions` and adds an `ask` todo row naming
+  the `<name>_redcap_raw` rename that cleaning applies.

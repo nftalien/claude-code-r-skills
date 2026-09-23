@@ -525,6 +525,18 @@ redcap_project_to_config <- function(project, study_name = NULL, default_window 
   }
   if (length(skips)) cfg$structural_skips <- skips
 
+  # Fields whose names fearlabr's own outputs use. clean_redcap() moves such a
+  # field aside as <name>_redcap_raw; the derivation says so now, so the rename
+  # is a known decision and not a surprise in a downstream select().
+  clash <- intersect(md$field_name, fearlabr_reserved_columns())
+  if (length(clash)) {
+    cfg$redcap$reserved_field_collisions <- as.list(stats::setNames(paste0(clash, "_redcap_raw"), clash))
+    note("redcap", "reserved_field_collisions", "ask",
+         paste0(length(clash), " field(s) reuse a fearlabr output column name and will be renamed at cleaning: ",
+                paste0(clash, " -> ", clash, "_redcap_raw", collapse = ", "),
+                ". Rename the field in REDCap if the study means it as something else"))
+  }
+
   # De-identification
   ids <- md$field_name[tolower(md$identifier %||% "") %in% c("y", "yes", "1", "true")]
   cfg$deid <- list(date_shift_seed = as.integer(format(Sys.Date(), "%Y%m%d")), date_shift_range_days = 30,

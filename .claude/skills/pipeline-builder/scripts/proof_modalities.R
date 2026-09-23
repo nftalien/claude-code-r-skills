@@ -56,6 +56,10 @@ raw_dir <- config$paths$raw_data
 dir.create(raw_dir, recursive = TRUE, showWarnings = FALSE)
 stem <- fearlabr_file_stem(config)
 
+run_stage("CFG labels are strings, not YAML booleans", {
+  assert_config_labels(config)
+})
+
 run_stage("TP  timepoints declared and consistent", {
   s <- timepoint_schedule(config)
   sprintf("%d timepoint(s): %s", nrow(s), paste(s$timepoint, collapse = ", "))

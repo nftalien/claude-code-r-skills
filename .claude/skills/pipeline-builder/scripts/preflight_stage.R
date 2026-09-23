@@ -81,6 +81,29 @@ cat("   ", length(keys), " key(s) read, ", length(missing), " missing\n", sep = 
 if (length(missing)) note(length(missing), " config key(s) the stage reads do not exist: ",
                           paste(missing, collapse = ", "))
 
+# ── 2b. no YAML boolean where a label or value belongs ─────────────────
+# YAML reads a bare Yes/No/On/Off/True/False as a boolean. A hand-written
+# `label: Yes` arrives as TRUE and every range and label check on that item
+# fails at render time, one item per round trip. yaml::write_yaml() quotes
+# these; hand edits do not. Same walk as fearlabr::assert_config_labels().
+cat("\n2b. config labels\n")
+label_keys <- c("label", "labels", "value", "values", "choices", "options", "item_text")
+bool_paths <- character()
+walk_cfg <- function(x, path) {
+  if (is.list(x)) {
+    nms <- names(x)
+    for (i in seq_along(x)) walk_cfg(x[[i]], c(path, if (!is.null(nms) && nzchar(nms[i])) nms[i] else paste0("[", i, "]")))
+  } else if (is.logical(x) && length(path) &&
+             (path[length(path)] %in% label_keys ||
+              (length(path) >= 2 && path[length(path) - 1] %in% c("labels", "values", "choices", "options")))) {
+    bool_paths <<- c(bool_paths, paste(path, collapse = "$"))
+  }
+}
+walk_cfg(cfg, character())
+for (bp in head(bool_paths, 20)) cat("   *** BOOLEAN *** ", bp, "\n", sep = "")
+cat("   ", length(bool_paths), " boolean(s) where a label or value belongs\n", sep = "")
+if (length(bool_paths)) note(length(bool_paths), " config label(s)/value(s) were read as booleans; quote them (label: \"Yes\")")
+
 # ── 3. no kable() whose value is thrown away ──────────────────────────
 # knitr auto-prints the visible value of each TOP-LEVEL expression. A braced
 # block's value is its LAST expression, so `if (nrow(x)) { kable(x); write_csv(x, f) }`
