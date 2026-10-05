@@ -1,0 +1,38 @@
+BrainVision Data Exchange Header File Version 1.0
+; Data created by the BrainVision Recorder
+
+[Common Infos]
+Codepage=UTF-8
+DataFile=sub-001_ses-01_task-flanker_eeg.eeg
+MarkerFile=sub-001_ses-01_task-flanker_eeg.vmrk
+DataFormat=BINARY
+DataOrientation=MULTIPLEXED
+NumberOfChannels=3
+; Sampling interval in microseconds
+SamplingInterval=2000
+
+[Binary Infos]
+BinaryFormat=IEEE_FLOAT_32
+
+[Channel Infos]
+; Each entry: Ch<Channel number>=<Name>,<Reference channel name>,
+Ch1=FCz,,0.1,µV
+Ch2=Cz,,0.1,µV
+Ch3=Pz,,0.1,µV
+
+[Comment]
+
+BrainAmp DC amplifier
+
+A m p l i f i e r  S e t u p
+============================
+Number of channels: 3
+Sampling Rate [Hz]: 500
+Sampling Interval [µS]: 2000
+
+Channels
+--------
+#     Name      Phys. Chn.    Resolution / Unit   Low Cutoff [s]   High Cutoff [Hz]   Notch [Hz]    Gradient         Offset
+1     FCz         1                0.1 µV             10              1000              Off
+2     Cz          2                0.1 µV             10              1000              Off
+3     Pz          3                0.1 µV             10              1000              Off

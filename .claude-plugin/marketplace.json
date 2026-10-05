@@ -11,7 +11,7 @@
       "name": "r-skills",
       "source": "./",
       "description": "Modern R development skills for tidyverse, rlang, Bayesian analysis, performance, and more",
-      "version": "1.2.3",
+      "version": "1.3.0",
       "author": {
         "name": "Claude Code R Skills"
       },

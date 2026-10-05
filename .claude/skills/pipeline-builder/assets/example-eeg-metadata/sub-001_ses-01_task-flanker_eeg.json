@@ -1,0 +1,16 @@
+{
+  "TaskName": "flanker",
+  "SamplingFrequency": 500,
+  "EEGReference": "Cz",
+  "PowerLineFrequency": 60,
+  "SoftwareFilters": {
+    "highpass": {
+      "cutoff": 0.1
+    }
+  },
+  "EEGChannelCount": 3,
+  "CapManufacturer": "Easycap",
+  "Manufacturer": "Brain Products",
+  "ManufacturersModelName": "BrainAmp DC",
+  "EEGPlacementScheme": "10-20"
+}

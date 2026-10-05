@@ -1,0 +1,9 @@
+quest_code,item_text,item_stem,item_choice,question_type,response_min,response_max,survey_name
+quest_101,How much do you feel afraid right now?,How much do you feel ... right now?,Afraid,RANGE_SCALE,0,4,Random Prompt
+quest_102,How much do you feel nervous right now?,How much do you feel ... right now?,Nervous,RANGE_SCALE,0,4,Random Prompt
+quest_103,How much do you feel upset right now?,How much do you feel ... right now?,Upset,RANGE_SCALE,0,4,Random Prompt
+quest_110,"Since the last prompt, did a stressful event happen?",,,SINGLE_CHOICE,0,1,Random Prompt
+quest_111,How stressful was it?,,,RANGE_SCALE,0,4,Random Prompt
+quest_120,I was able to resist temptation this morning,,,RANGE_SCALE,1,5,Morning Survey
+quest_130,Anything else about your day?,,,TEXT,,,Random Prompt
+quest_140,"Right now, how much are you having thoughts of hurting yourself?",,,RANGE_SCALE,0,4,Random Prompt

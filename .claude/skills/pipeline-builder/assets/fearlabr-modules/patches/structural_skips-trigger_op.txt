@@ -1,0 +1,49 @@
+    trig_val   <- rule$trigger_value %||% 0
+    trig_op    <- rule$trigger_op %||% "="
+    skip_val   <- rule$skip_value %||% 0
+    downstream <- intersect(rule$downstream, names(out))
+
+    if (length(downstream) == 0) {
+      cat("⏭  structural skip: trigger '", trig,
+          "' present but no downstream items in data — rule skipped\n", sep = "")
+      next
+    }
+
+    # A rule states the condition under which the section WAS SKIPPED, so the
+    # downstream items score at the floor rather than counting as missing.
+    # `trigger_op` defaults to "=" for the hand-written form (audit_1 = 0 means
+    # "no drinking, AUDIT 2-10 not asked"). Config derived from REDCap branching
+    # logic states the opposite condition — branching says when a field is
+    # SHOWN — so redcap_project_to_config() inverts the operator on the way in
+    # and writes "<>" here. Getting this backwards fills zeros for exactly the
+    # people who were asked, which is why the operator is explicit.
+    tv  <- out[[trig]]
+    tvn <- suppressWarnings(as.numeric(as.character(tv)))
+    cvn <- suppressWarnings(as.numeric(as.character(trig_val)))
+    # Compare numerically when both sides are numeric: REDCap exports codes as
+    # character, and "10" < "9" is TRUE when compared as strings.
+    if (!is.na(cvn) && any(!is.na(tvn))) {
+      lhs <- tvn; rhs <- cvn
+    } else {
+      lhs <- as.character(tv); rhs <- as.character(trig_val)
+    }
+    skip_now <- switch(
+      trig_op,
+      "="  = lhs == rhs, "==" = lhs == rhs,
+      "<>" = lhs != rhs, "!=" = lhs != rhs,
+      ">"  = lhs >  rhs, "<"  = lhs <  rhs,
+      ">=" = lhs >= rhs, "<=" = lhs <= rhs,
+      stop("Unknown trigger_op '", trig_op, "' in the structural skip rule for '",
+           trig, "'. Use one of = <> > < >= <=.", call. = FALSE)
+    )
+
+    n_filled <- 0L
+    for (v in downstream) {
+      fill_idx <- !is.na(tv) & !is.na(skip_now) & skip_now & is.na(out[[v]])
+      n_filled <- n_filled + sum(fill_idx, na.rm = TRUE)
+      out[[v]] <- ifelse(fill_idx, skip_val, out[[v]])
+    }
+
+    cat("✓ structural skip: trigger '", trig, "' ", trig_op, " ", trig_val,
+        " → filled ", n_filled, " skipped cell(s) across ",
+        length(downstream), " downstream item(s)\n", sep = "")

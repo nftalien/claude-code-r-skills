@@ -1,6 +1,6 @@
 {
   "name": "r-skills",
-  "version": "1.2.4",
+  "version": "1.3.0",
   "description": "Modern R development skills for Claude Code - tidyverse patterns, rlang metaprogramming, Bayesian inference, performance optimization, and more",
   "author": {
     "name": "Claude Code R Skills"
@@ -17,7 +17,10 @@
     "performance",
     "s7",
     "testing",
-    "tdd"
+    "tdd",
+    "pipeline",
+    "eeg",
+    "actigraphy"
   ],
   "skills": ["./.claude/skills/", "./commands/"],
   "agents": [
