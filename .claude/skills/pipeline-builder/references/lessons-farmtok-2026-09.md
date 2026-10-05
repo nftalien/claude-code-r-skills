@@ -145,6 +145,23 @@ renders: at the interview, in the config, in preflight, or in the dry run.
     before the subgroup filter. Rule: every count in a banner is computed
     from the frame that follows the last filter.
 
+29. **A subgroup render that writes a shared file.** The female render of
+    10 wrote the coverage CSV and the model-identification CSV to the same
+    paths as the whole-sample render and overwrote them, and 08 had no
+    subgroup path at all, so the female set lacked every F table. Rule:
+    every write in a stage goes through the sample-aware helpers
+    (`farmtok_plan_table_out`, `farmtok_save_fig`) or carries
+    `farmtok_sample_suffix()`; every stage that reports on the ITT set
+    takes `params$subgroup`; `rerun_stages.R` lists them all. Check the
+    subgroup folder against the whole-sample folder file by file before
+    saying the subgroup set is complete.
+30. **Figures drawn for the render, not the paper.** In-image titles,
+    colour-only encodings and 150 dpi are right for the HTML and wrong for
+    APA. Rule: one save helper writes both copies (`farmtok_save_fig`): the
+    render copy and an APA copy with no title, an APA theme, greyscale
+    where the scale is discrete, 300 dpi, at most 6.5 in wide. Figures
+    are never saved with a bare `ggsave()`.
+
 ### At render time on the lab machine
 
 19. **Rendering into a OneDrive or SharePoint folder.** The sync client held
