@@ -162,6 +162,17 @@ renders: at the interview, in the config, in preflight, or in the dry run.
     where the scale is discrete, 300 dpi, at most 6.5 in wide. Figures
     are never saved with a bare `ggsave()`.
 
+31. **Approvals that never left the lab machine.** `builder_approve()` writes
+    `_pipeline.yml` locally. FARM-TOK's approval of 08 was never pushed;
+    the chat then told the person to `git checkout -- _pipeline.yml` before
+    a pull (to get past a conflict with a cloud-side reset), which
+    discarded it, and the next chain stopped at 10's gate weeks later.
+    Rule: every approval is followed at once by
+    `git add _pipeline.yml && git commit && git push`, and every command
+    block that ends in an approval ends in that push. Never tell the
+    person to discard `_pipeline.yml` without first checking that GitHub
+    already holds every approval it carries.
+
 ### At render time on the lab machine
 
 19. **Rendering into a OneDrive or SharePoint folder.** The sync client held
