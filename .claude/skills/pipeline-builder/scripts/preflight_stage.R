@@ -289,9 +289,14 @@ if (grepl("here::here\\(\"R\"\\)|source\\(", all_code)) {
   proj <- normalizePath(dirname(qmd))
   for (up in 1:3) { if (dir.exists(file.path(proj, "R"))) break; proj <- dirname(proj) }
   helper_files <- list.files(file.path(proj, "R"), pattern = "\\.R$", full.names = TRUE)
+  # Only TOP-LEVEL definitions in a sourced file become visible to the
+  # stage. A helper that defines its own local `num()` inside another
+  # function does not give the stage a `num()` (FARM-TOK, 2026-10-27).
+  is_fun_def <- function(e) is.call(e) && deparse(e[[1]])[1] %in% c("<-", "=", "<<-") && length(e) == 3 &&
+    is.name(e[[2]]) && is.call(e[[3]]) && identical(e[[3]][[1]], as.name("function"))
   for (hf in helper_files) {
     exprs <- tryCatch(parse(hf), error = function(e) NULL)
-    if (!is.null(exprs)) for (e in exprs) collect_defs(e)
+    if (!is.null(exprs)) for (e in exprs) if (is_fun_def(e)) defined <- c(defined, as.character(e[[2]]))
   }
   if (length(helper_files)) cat("   (", length(helper_files), " project helper file(s) under R/ counted as definitions)\n", sep = "")
 }
@@ -318,6 +323,45 @@ cat("   ", length(called), " function(s) called, ", length(defined),
     " defined in the stage, ", length(undefined), " unaccounted for\n", sep = "")
 if (length(undefined)) note(length(undefined), " function(s) are called but defined nowhere: ",
                             paste(sort(undefined), collapse = ", "))
+
+# ── 7b. a helper another stage defines, resolved here by a package ────
+# Step 7 counts a name as defined when an attached package exports it. That
+# hides the worst case: a stage calls a helper that a sibling stage defines
+# (`num()` in FARM-TOK's 08 and 11) but never defines it itself, so the call
+# silently reaches a package function with the same name (tibble exports
+# pillar::num()). It runs, returns the wrong type, and fails far away (%in%
+# on a pillar_num). Parsed code only, so text in messages cannot match.
+cat("\n7b. helpers borrowed silently from a package\n")
+sib_defs <- character()
+collect_sib <- function(e) {
+  if (empty_arg(e) || !is.call(e)) return(invisible(NULL))
+  if (deparse(e[[1]])[1] %in% c("<-", "=", "<<-") && length(e) == 3 &&
+      is.name(e[[2]]) && is.call(e[[3]]) && identical(e[[3]][[1]], as.name("function"))) {
+    sib_defs <<- c(sib_defs, as.character(e[[2]]))
+  }
+  kids <- as.list(e)[-1]
+  for (i in seq_along(kids)) if (!empty_arg(kids[[i]]) && is.call(kids[[i]])) collect_sib(kids[[i]])
+  invisible(NULL)
+}
+sib_files <- list.files(dirname(qmd), pattern = "\\.qmd$", full.names = TRUE)
+sib_files <- sib_files[basename(sib_files) != basename(qmd)]
+for (sf in sib_files) {
+  ln <- readLines(sf, warn = FALSE, encoding = "UTF-8")
+  st <- grep("^```[{]r", ln); en <- grep("^```[[:space:]]*$", ln)
+  for (s0 in st) {
+    e0 <- en[en > s0][1]; if (is.na(e0)) next
+    body <- ln[(s0 + 1):(e0 - 1)]; body <- body[!grepl("^#[|]", body)]
+    exprs <- tryCatch(parse(text = paste(body, collapse = "\n")), error = function(e) NULL)
+    if (!is.null(exprs)) for (ex in exprs) collect_sib(ex)
+  }
+}
+shadowed <- sort(intersect(setdiff(intersect(called, unique(sib_defs)), defined), exported))
+for (sh in shadowed) cat("   *** resolves to a package function, not the project helper *** ", sh,
+                         "(): another stage defines it, this one does not\n", sep = "")
+cat("   ", length(shadowed), " helper(s) borrowed silently from ", length(sib_files), " sibling stage(s)\n", sep = "")
+if (length(shadowed)) note(length(shadowed), " helper(s) defined in another stage are called here without a definition and ",
+                           "resolve to a package function of the same name: ", paste(shadowed, collapse = ", "),
+                           ". Define them in this stage.")
 
 # ── 8. the render must be one self-contained file ─────────────────────
 cat("\n8. embed-resources\n")

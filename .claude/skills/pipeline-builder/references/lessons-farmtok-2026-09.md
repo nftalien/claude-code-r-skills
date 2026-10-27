@@ -173,6 +173,19 @@ renders: at the interview, in the config, in preflight, or in the dry run.
     person to discard `_pipeline.yml` without first checking that GitHub
     already holds every approval it carries.
 
+32. **A helper one stage defines, another calls, and a package answers.**
+    Stages 08 and 11 defined `num()`; 10 called it without defining it,
+    and tibble exports a `num()` (pillar's) of its own. The call ran,
+    returned a `pillar_num`, worked with `==` for months, and failed the
+    first time a new line used `%in%`. The simulated test defined its own
+    `num()` and could not see this. Rules: run new chunk code with the
+    stage's own `library()` line and its own helper definitions, not
+    stand-ins; preflight step 7b now flags any helper a sibling stage
+    defines that this stage calls without defining while an attached
+    package exports the same name; and preflight counts only TOP-LEVEL
+    definitions in `R/`, because a helper's local functions are invisible
+    to the stage (`R/` had a local `num()` that hid this from step 7).
+
 ### At render time on the lab machine
 
 19. **Rendering into a OneDrive or SharePoint folder.** The sync client held
