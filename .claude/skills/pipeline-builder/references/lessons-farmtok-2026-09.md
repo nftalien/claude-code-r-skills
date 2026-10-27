@@ -171,7 +171,11 @@ renders: at the interview, in the config, in preflight, or in the dry run.
     `git add _pipeline.yml && git commit && git push`, and every command
     block that ends in an approval ends in that push. Never tell the
     person to discard `_pipeline.yml` without first checking that GitHub
-    already holds every approval it carries.
+    already holds every approval it carries. The cloud side of the same
+    rule: do not edit `_pipeline.yml` in a cloud commit (notes, resets)
+    while the lab machine may hold approvals not yet pushed; a stage whose
+    notebook changed is re-rendered by the person's next chain anyway, and
+    a reset the gate needs is a `mark_stage()` line for the person to run.
 
 32. **A helper one stage defines, another calls, and a package answers.**
     Stages 08 and 11 defined `num()`; 10 called it without defining it,
