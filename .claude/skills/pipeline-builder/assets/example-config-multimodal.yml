@@ -1,0 +1,139 @@
+# ════════════════════════════════════════════════════════════════════════
+# Example multimodal _config.yml — REDCap + EEG + sensors, three timepoints
+# ════════════════════════════════════════════════════════════════════════
+# A complete, proofable config for a fictional study ("MMX"). It is the
+# starting point the builder interview edits, and the file
+# scripts/proof_modalities.R runs against when no study config is given.
+# Every value is fictional. Replace study facts; keep the package keys.
+# ════════════════════════════════════════════════════════════════════════
+
+study:
+  name: "mmx"
+  full_name: "Multimodal Example Study"
+  acronym: "MMX"
+  design: "Single-arm feasibility, three waves"
+  target_n: 30
+  enroll_cap: 30
+  unit: "participants"
+  pi: "PI Name"
+  institution: "Institution"
+  funder: "TODO"
+  grant_mechanism: "TODO"
+
+conditions:
+  - {name: "Intervention", code: "int", redcap_value: 1, n_expected: 15, description: "Active"}
+  - {name: "Control",      code: "ctl", redcap_value: 2, n_expected: 15, description: "Waitlist"}
+
+redcap:
+  ingest_mode: "csv"
+  export_prefix: "^MMX_DATA_"
+  project_url: null
+  api_token_service: null
+  api_token_key: null
+  id_column: "id"
+  randomization_field: "randomize"
+  arm_label: "arm_1"
+  events:
+    baseline: {raw: "baseline_arm_1", label: "Baseline", assessment: true}
+    week4:    {raw: "week_4_arm_1",   label: "Week 4",   assessment: true}
+    week12:   {raw: "week_12_arm_1",  label: "Week 12",  assessment: true}
+  forms_to_pull: ["demographics", "phq9", "gad7"]
+
+instruments:
+  phq9:
+    name: "Patient Health Questionnaire-9"
+    n_items: 9
+    item_range: [0, 3]
+    total_range: [0, 27]
+    minimum_valid_items: 8
+    reverse_coded: []
+    items_in_order: ["phq_1","phq_2","phq_3","phq_4","phq_5","phq_6","phq_7","phq_8","phq_9"]
+    redcap_total_calc: "phq9_total"
+    notes: "phq_9 is the suicide-ideation item; flagged for clinical review in 03"
+  gad7:
+    name: "GAD-7"
+    n_items: 7
+    item_range: [0, 3]
+    total_range: [0, 21]
+    minimum_valid_items: 6
+    reverse_coded: []
+    items_in_order: ["gad_1","gad_2","gad_3","gad_4","gad_5","gad_6","gad_7"]
+    redcap_total_calc: "gad7_total"
+
+metricwire:
+  enabled: false
+
+# ── Timepoints: the one declaration every modality is checked against ────
+timepoints:
+  anchor: baseline
+  anchor_date_column: "baseline_date"
+  schedule:
+    baseline: {label: "Baseline", offset_days: 0,  window_days: [-7, 7],
+               redcap_event: "baseline_arm_1", modalities: [redcap, eeg, sensors]}
+    week4:    {label: "Week 4",   offset_days: 28, window_days: [-3, 7],
+               redcap_event: "week_4_arm_1",   modalities: [redcap, sensors]}
+    week12:   {label: "Week 12",  offset_days: 84, window_days: [-7, 14],
+               redcap_event: "week_12_arm_1",  modalities: [redcap, eeg]}
+
+eeg:
+  enabled: true
+  format: long
+  file_glob: "eeg/*_features.csv"
+  columns: {id: subject, session: session, channel: channel, condition: condition,
+            measure: measure, value: value, n_trials: n_trials}
+  id_transform: {strip_prefix: "sub-", pad_width: 3}
+  id_pattern: "^[0-9]{3}$"
+  session_map: {"ses-01": baseline, "ses-02": week12}
+  features:
+    - {name: ern, measure: mean_amplitude, condition: error,   channels: [FCz, Cz], window_ms: [0, 100]}
+    - {name: crn, measure: mean_amplitude, condition: correct, channels: [FCz, Cz], window_ms: [0, 100]}
+  qc:
+    min_trials: 6
+    amplitude_range_uv: [-50, 50]
+    required_channels: [FCz, Cz]
+
+sensors:
+  enabled: true
+  tz: "America/New_York"
+  streams:
+    accel:
+      label: "Wrist actigraphy (daily)"
+      file_glob: "sensor/*_accel_daily.csv"
+      grain: day
+      columns: {id: participant_id, date: date}
+      metrics: {steps: step_count, wear_minutes: wear_min}
+      valid_day_rule: "wear_minutes >= 600"
+      id_transform: {pad_width: 3}
+      id_pattern: "^[0-9]{3}$"
+
+paths:
+  raw_data: "data/raw"
+  interim: "data/interim"
+  derived: "data/derived"
+  deid: "data/deid"
+  synthetic: "data/synthetic"
+  locked: "data/locked"
+  output: "output"
+  dictionaries: "output/dictionaries"
+  validation: "output/validation"
+  figures: "output/figures"
+  renders: "output/renders"
+  metadata: "metadata"
+
+exclusions:
+  test_ids: []
+  test_id_patterns: ["^TEST", "^999"]
+  participants:
+    path: "metadata/exclusions.csv"
+    primary_level: "itt"
+    run_sensitivity_levels: true
+
+validation:
+  redcap_calc_tolerance: 0.001
+  required_n_min: 1
+
+deid:
+  date_shift_seed: 20260904
+  date_shift_range_days: 30
+  date_columns_to_shift: ["baseline_date"]
+  direct_id_columns: ["email", "phone", "first_name", "last_name"]

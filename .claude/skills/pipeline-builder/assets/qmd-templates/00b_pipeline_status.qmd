@@ -1,0 +1,104 @@
+---
+title: "{{STUDY_NAME}} — 00b Pipeline Status"
+subtitle: "What is built, what is approved, what comes next"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-summary: "Show code"
+    embed-resources: true
+    df-print: kable
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+The build record. `_pipeline.yml` holds one entry per stage with its status
+(planned, generated, rendered, approved, failed), and this notebook draws it:
+a diagram of the stages and their dependencies, coloured by status, and the
+table underneath. Re-render it whenever you want to see where the build
+stands; it reads nothing but the manifest and the coverage files the modality
+stages leave in `output/validation/`.
+
+Two rules are enforced by the manifest and are worth knowing before reading
+the picture. A stage is generated only after every stage it depends on is
+approved, and a stage is approved only after its render has been looked at.
+So a blue node has been seen by a person; a grey node downstream of it has
+not been started; a red node stopped and its note says why.
+
+```{r}
+#| label: setup
+suppressPackageStartupMessages({ library(fearlabr); library(dplyr) })
+config <- read_config()
+stem <- fearlabr_file_stem(config)
+builder_stage_gate("00b_pipeline_status")
+manifest <- read_pipeline_manifest()
+validation_dir <- resolve_path(config$paths$validation %||% "output/validation", config)
+figures_dir <- resolve_path(config$paths$figures %||% "output/figures", config)
+dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+## The pipeline
+
+```{r}
+#| label: dag
+#| fig-width: 11
+#| fig-height: 5
+log_section("Pipeline DAG")
+cat("• Study: ", manifest$study, "   modalities: ", paste(unlist(manifest$modalities), collapse = ", "),
+    "   timepoints: ", paste(unlist(manifest$timepoints), collapse = ", "), "\n", sep = "")
+plot_pipeline_dag(manifest)
+
+# The same graph as Mermaid text, for the README and for the Shiny front end.
+mmd_path <- file.path(dirname(validation_dir), "pipeline_dag.mmd")
+writeLines(pipeline_dag_mermaid(manifest), mmd_path)
+cat("✓ Mermaid source written: ", mmd_path, "\n", sep = "")
+```
+
+## Status table
+
+```{r}
+#| label: status
+status <- pipeline_status_table(manifest)
+n_by <- table(factor(status$status, levels = stage_status_levels()))
+cat("• ", paste(names(n_by), n_by, sep = ": ", collapse = "   "), "\n", sep = "")
+nxt <- next_stage(manifest)
+cat(if (is.null(nxt)) "✓ Every stage is approved.\n" else paste0("• Next stage to build: ", nxt, "\n"))
+status
+```
+
+## Coverage across modalities
+
+Each modality stage writes `output/validation/<stem>_coverage_<modality>.csv`
+(participants expected at each timepoint, participants observed). When at
+least one exists they are drawn together here, so a wave where EEG has 40 of
+60 while REDCap has 58 of 60 is visible before anyone models it.
+
+```{r}
+#| label: coverage
+#| fig-width: 10
+#| fig-height: 3.5
+cov_files <- list.files(validation_dir, pattern = paste0("^", stem, "_coverage_.*\\.csv$"), full.names = TRUE)
+if (length(cov_files)) {
+  dash <- modality_coverage_dashboard(lapply(cov_files, readr::read_csv, show_col_types = FALSE))
+  cat("✓ ", length(cov_files), " coverage file(s): ", paste(basename(cov_files), collapse = ", "), "\n", sep = "")
+  print(plot_coverage_dashboard(dash))
+  dash
+} else {
+  cat("⏭ No coverage files yet; they appear once a modality's QC stage has rendered\n")
+}
+```
+
+## What happens next
+
+Approve this stage in the R console with `builder_approve("00b_pipeline_status")`
+once the diagram matches the plan you agreed to. The next stage is whichever
+the status table names; it is generated only after this one is approved.
+
+```{r}
+#| label: record
+builder_record_render("00b_pipeline_status")
+```

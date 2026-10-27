@@ -1,0 +1,37 @@
+# _pipeline.yml — the stage-by-stage build record. Written by
+# new_pipeline_manifest() and updated by mark_stage(); do not hand-edit
+# status fields. Kept in version control next to _config.yml so the state of
+# the build is visible in a diff.
+#
+# status: planned -> generated -> rendered -> approved   (or failed)
+# A stage is generated only when every depends_on is approved, and approved
+# only from rendered. Resetting a stage to planned resets everything
+# downstream of it.
+study: "{{STUDY_NAME}}"
+created_at: "{{ISO_DATETIME}}"
+modalities: [redcap, ema, eeg, sensors]
+timepoints: [baseline, week4, week12]
+stages:
+  - id: 00_setup
+    label: Setup
+    modality: core
+    qmd: 00_setup.qmd
+    depends_on: []
+    verify: "config echo; secrets guard; timepoint schedule table"
+    status: planned
+    render: ~
+    notes: ""
+    updated_at: ~
+    approved_at: ~
+  - id: 00b_pipeline_status
+    label: Pipeline status
+    modality: core
+    qmd: 00b_pipeline_status.qmd
+    depends_on: [00_setup]
+    verify: "DAG and status table match the plan"
+    status: planned
+    render: ~
+    notes: ""
+    updated_at: ~
+    approved_at: ~
+  # ... one entry per stage from builder_stage_registry(), filtered by modality

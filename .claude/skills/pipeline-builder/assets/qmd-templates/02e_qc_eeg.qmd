@@ -1,0 +1,114 @@
+---
+title: "{{STUDY_NAME}} — 02e EEG QC and features"
+subtitle: "Trial floor, amplitude range, required channels → feature table per participant × timepoint"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-summary: "Show code"
+    embed-resources: true
+    df-print: kable
+execute:
+  warning: true
+  message: false
+---
+
+## Overview
+
+Three QC rules, each read from `eeg.qc` and printed here so the render
+documents what was applied: a minimum trial count per participant and
+session, an amplitude range outside which a value is implausible, and the
+channels that must be present. A participant-timepoint failing any rule is
+flagged, not dropped; the flag travels with the feature table so an analysis
+can exclude on it explicitly.
+
+Then the reduction: each feature in `eeg.features` is the mean of its measure
+over its channels for its condition. A feature that matches no rows stops
+this stage and names itself. The alternative, a column of NA that looks like
+missing data, cost a study a week once.
+
+```{r}
+#| label: setup
+suppressPackageStartupMessages({ library(fearlabr); library(dplyr) })
+config <- read_config()
+stem <- fearlabr_file_stem(config)
+builder_stage_gate("02e_qc_eeg")
+raw_dir <- resolve_path(config$paths$raw_data, config)
+derived_dir <- resolve_path(config$paths$derived, config)
+validation_dir <- resolve_path(config$paths$validation %||% "output/validation", config)
+figures_dir <- resolve_path(config$paths$figures %||% "output/figures", config)
+for (d in c(derived_dir, validation_dir, figures_dir)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+
+eeg_long <- readRDS(file.path(raw_dir, paste0(stem, "_eeg_features_latest.rds")))
+id_audit_line(eeg_long$study_id, "EEG long (from 01e)", pattern = config$eeg$id_pattern)
+```
+
+## The rules, as configured
+
+```{r}
+#| label: rules
+qc_cfg <- config$eeg$qc
+cat("• min_trials:         ", qc_cfg$min_trials %||% "not set", "\n", sep = "")
+cat("• amplitude_range_uv: ", paste(qc_cfg$amplitude_range_uv %||% c("-Inf", "Inf"), collapse = " to "), "\n", sep = "")
+cat("• required_channels:  ", paste(qc_cfg$required_channels %||% "none", collapse = ", "), "\n", sep = "")
+```
+
+## QC verdicts
+
+```{r}
+#| label: qc
+#| fig-width: 8
+#| fig-height: 6
+log_section("QC")
+qc <- eeg_qc_summary(eeg_long, config)
+n_flag <- sum(!qc$pass)
+cat(if (n_flag == 0) "✓ Every participant-timepoint passes\n" else
+    paste0("⚠️ ", n_flag, " of ", nrow(qc), " participant-timepoint(s) flagged\n"))
+readr::write_csv(qc, file.path(validation_dir, paste0(stem, "_eeg_qc.csv")))
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  p <- plot_eeg_qc(qc)
+  ggplot2::ggsave(file.path(figures_dir, paste0(stem, "_eeg_qc.png")), p, width = 8, height = 6, dpi = 120)
+  print(p)
+}
+qc |> filter(!pass)
+```
+
+## Feature table
+
+```{r}
+#| label: features
+#| fig-width: 10
+#| fig-height: 4
+log_section("Features")
+features <- eeg_feature_table(eeg_long, config) |>
+  left_join(qc |> select(study_id, timepoint, eeg_qc_pass = pass), by = c("study_id", "timepoint"))
+assert_expected_n(features, dplyr::n_distinct(eeg_long$study_id), id_col = "study_id",
+                  label = "feature reduction")
+write_versioned_rds(features, paste0(stem, "_eeg_features_wide"), derived_dir)
+write_latest_rds(features, paste0(stem, "_eeg_features_wide"), derived_dir)
+cat("✓ ", nrow(features), " participant-timepoint rows; features: ",
+    paste(vapply(config$eeg$features, function(f) f$name, character(1)), collapse = ", "), "\n", sep = "")
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  p <- plot_eeg_features(features |> select(-eeg_qc_pass))
+  ggplot2::ggsave(file.path(figures_dir, paste0(stem, "_eeg_features.png")), p, width = 10, height = 4, dpi = 120)
+  print(p)
+}
+features |>
+  tidyr::pivot_longer(-c(study_id, timepoint, eeg_qc_pass), names_to = "feature") |>
+  summarise(n = sum(!is.na(value)), mean = mean(value, na.rm = TRUE), sd = sd(value, na.rm = TRUE),
+            .by = c(feature, timepoint))
+```
+
+## What happens next
+
+`<stem>_eeg_features_wide_latest.rds` is what 07m links to REDCap and the
+other modalities, on `study_id` and `timepoint`. Approve this stage when the
+flagged list is one you can account for (a known bad session, a participant
+who left early) and the feature distributions are on the scale the literature
+reports for that component.
+
+```{r}
+#| label: record
+builder_record_render("02e_qc_eeg")
+```
